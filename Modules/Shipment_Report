@@ -1,0 +1,281 @@
+'   version: 2024-04
+'   Created by WHS
+Option Explicit
+Private SID_Column As Integer, SO_Column As Integer, PO_Column As Integer, SAPSID_Range As Range
+Private SupplierSID_Range As Range, SO_Column_Range As Range, PO_Column_Range As Range
+Private TotalCells As Integer, ShipReportExportName As String
+Private SupplierBookName As String, SupplierBook As Workbook, SupplierSheet As Worksheet, SapExportBook As Workbook, SapExportSheet As Worksheet, ShipReportMacroSheet As Worksheet
+
+
+Sub MainShipReport()
+
+
+    ShipReportExportName = "ShipReportExport " & Today & ".xls"
+    Set ShipReportMacroSheet = XlMacroBook.Sheets("ShipmentReport")
+    
+    ShipReportMacroSheet.Range("A2:D99999").ClearContents
+    
+    
+    OpenSupplierWorkbook
+    SelectSheet
+    CleanUpSupplierBook
+    ExportSapData
+    CleanUpSapExport
+    CompareData
+
+
+End Sub
+
+'opens workbook from a list displaying all the available workbooks-------------------------------------
+Private Sub OpenSupplierWorkbook()
+Dim FileSystemObject As Object, file As Object, SelectWorkbook As Integer, WorkbookList As String, WorkbookNames() As String
+Dim WorkbookIndex As Integer
+    
+' Create a FileSystemObject---------------------------------------------------------------------------
+    Set FileSystemObject = CreateObject("Scripting.FileSystemObject")
+        WorkbookIndex = 1
+        
+' Loop through each file in the folder----------------------------------------------------------------
+        For Each file In FileSystemObject.GetFolder(ShipReportFolder).Files
+        
+' Check if the file is an Excel workbook but remove the ones that start with "~$" this are temporary files-------------
+            If (InStr(1, file.Name, ".xlsx") > 0 Or InStr(1, file.Name, ".xls") > 0) And Left(file.Name, 2) <> "~$" Then
+                SupplierBookName = file.Name
+                ReDim Preserve WorkbookNames(1 To WorkbookIndex)
+                WorkbookNames(WorkbookIndex) = SupplierBookName
+                WorkbookList = WorkbookList & WorkbookIndex & ". " & SupplierBookName & vbNewLine & vbNewLine
+                WorkbookIndex = WorkbookIndex + 1
+            End If
+        Next file
+        
+' Display the list of workbooks with index numbers---------------------------------------------------------------------
+If WorkbookList = "" Then
+    MsgBox "please ensure that you have the workbooks on the folder" & vbNewLine & vbNewLine & ShipReportFolder, vbCritical, "Missing Excel Files"
+    End
+End If
+
+SelectBook:
+        SelectWorkbook = InputBox("Select a workbook to open by entering the corresponding number:" & vbNewLine & vbNewLine & WorkbookList)
+        
+' Check if a valid index number is entered &  Open the selected workbook-----------------------------------------------------------------
+        If IsNumeric(SelectWorkbook) And SelectWorkbook >= 1 And SelectWorkbook < WorkbookIndex Then
+            Set SupplierBook = Workbooks.Open(ShipReportFolder & "\" & WorkbookNames(SelectWorkbook))
+            SupplierBookName = WorkbookNames(SelectWorkbook)
+        Else
+        MsgBox "Invalid! try again."
+        GoTo SelectBook
+        End If
+
+End Sub
+Private Sub SelectSheet()
+    
+    Dim SheetNumber As Integer
+    Dim SheetNames As String
+    Dim i As Integer
+    
+' Concatenate sheet numbers and names if there is more than 1------------------------------------------
+If SupplierBook.Sheets.Count > 1 Then
+    For i = 1 To SupplierBook.Sheets.Count
+        SheetNames = SheetNames & i & ". " & SupplierBook.Sheets(i).Name & vbNewLine & vbNewLine
+    Next i
+    
+' Prompt user to enter sheet number--------------------------------------------------------------------
+SelectSheet:
+    SheetNumber = Application.InputBox("Select a sheet by entering its number:" & vbNewLine & vbNewLine & SheetNames)
+    
+' Check if a valid sheet number was entered------------------------------------------------------------
+    If SheetNumber > 0 And SheetNumber <= SupplierBook.Sheets.Count Then
+        Set SupplierSheet = SupplierBook.Sheets(SheetNumber)
+        SupplierSheet.Activate
+    Else
+        MsgBox "Invalid sheet number."
+        GoTo SelectSheet
+    End If
+Else
+    Set SupplierSheet = SupplierBook.Sheets(1)
+    SupplierSheet.Activate
+    Exit Sub
+End If
+
+End Sub
+Private Sub CleanUpSupplierBook()
+    
+Dim currentColumn As Integer, columnHeading As String
+
+    SupplierSheet.Activate
+    
+' Delete irrelevant columns--------------------------------------------------------------------
+        For currentColumn = SupplierSheet.UsedRange.columns.Count To 1 Step -1
+            columnHeading = SupplierSheet.UsedRange.Cells(1, currentColumn).value
+
+            Select Case UCase(columnHeading)
+            Case "HP SO", "SHIPMENT ID", "HP SO#", "NIM", "CUST SO", "HP PO", "PO#", "HP SO NO", "SHIP ID NO.", "PO NO", "SHIP ID NO", "SHIP ID HPE", "SID"
+                ' Yello!
+                Case Else
+                    SupplierSheet.columns(currentColumn).Delete
+            End Select
+        Next
+        
+
+      
+      
+
+
+' Find the column # containing the ShipIDs--------------------------------------------------------------------------------------------------------------
+    For currentColumn = 1 To SupplierSheet.UsedRange.columns.Count
+        columnHeading = SupplierSheet.Cells(1, currentColumn).value
+        
+        If UCase(columnHeading) = "SHIPMENT ID" Or UCase(columnHeading) = "SID" Or UCase(columnHeading) = "NIM" Or UCase(columnHeading) = "SHIP ID NO." Or UCase(columnHeading) = "SHIP ID NO" Or UCase(columnHeading) = "SHIP ID HPE" Then
+            SID_Column = currentColumn
+            Exit For
+        End If
+        
+    Next currentColumn
+    
+
+'sorts, removes duplicates by the SID column & auto fits
+    Range("A:AZ").RemoveDuplicates columns:=SID_Column, Header:=xlYes
+    Range("A:J").Sort key1:=Cells(1, SID_Column), order1:=xlAscending, Header:=xlYes
+    Range("A:J").columns.AutoFit
+    
+'sets the headers range
+    Get_Headers
+    Set SupplierSID_Range = SupplierSheet.Range(SupplierSheet.Cells(2, SID_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.Count, SID_Column).End(xlUp).Row, SID_Column))
+    
+    
+    SupplierSheet.Cells(2, SID_Column).Select
+    SupplierSheet.Range(Selection, Selection.End(xlDown)).Select
+    TotalCells = Selection.Count
+    Selection.Copy
+    
+    
+
+End Sub
+Private Sub ExportSapData()
+
+Dim SystemSelection, BottomTextBar As String
+Dim StartUp As New StartUp
+Dim Utilities As New ZenUtils
+    
+
+    session.findById("wnd[0]").maximize
+    session.StartTransaction "SE16N"
+
+'selects the table and adds the info-------------------------------------
+    session.findById("wnd[0]/usr/ctxtGD-TAB").text = "EKES"
+    session.findById("wnd[0]").sendVKey 0
+    session.findById("wnd[0]/usr/ctxtGD-VARIANT").text = "/SIDPO" 'variant i need to make one
+    session.findById("wnd[0]").sendVKey 0
+
+'open XBLNR to paste SIDs-------------------------------------------
+    session.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,15]").SetFocus
+    session.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,15]").press
+
+
+'pastes from clipboard------------------------------------------------------
+    session.findById("wnd[1]/tbar[0]/btn[24]").press
+    session.findById("wnd[1]/tbar[0]/btn[8]").press
+    session.findById("wnd[0]/tbar[1]/btn[8]").press
+
+'check for results, if none, exits program------------------------------------
+    BottomTextBar = session.findById("wnd[0]/sbar/pane[0]").text
+        If BottomTextBar = "No values found" Then
+            XlMainSheet.Range("C29").value = BottomTextBar & Today
+            Exit Sub
+        End If
+        
+'export the data here
+    session.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").pressToolbarContextButton "&MB_EXPORT"
+    session.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").selectContextMenuItem "&XXL"
+    session.findById("wnd[1]/usr/ctxtDY_PATH").text = ShipReportFolder
+    session.findById("wnd[1]/usr/ctxtDY_FILENAME").text = ShipReportExportName
+    session.findById("wnd[1]/usr/ctxtDY_FILENAME").caretPosition = 6
+    session.findById("wnd[1]/tbar[0]/btn[0]").press
+
+End Sub
+Private Sub CleanUpSapExport()
+
+Set SapExportBook = Workbooks.Open(ShipReportFolder & "\" & ShipReportExportName)
+Set SapExportSheet = SapExportBook.Sheets(1)
+SapExportSheet.Range("A:B").RemoveDuplicates columns:=2, Header:=xlYes
+SapExportSheet.Range("A:B").Sort key1:=Range("B1"), order1:=xlAscending, Header:=xlYes
+Set SAPSID_Range = SapExportSheet.Range("B2", SapExportSheet.Range("B2").End(xlDown))
+SapExportSheet.Range("B2", SapExportSheet.Range("B2").End(xlDown)).Select
+
+End Sub
+Private Sub CompareData()
+Dim SapList As Variant, SupplierList As Variant, dict As Object, value As Variant, i As Long, RowPasting As Long
+    
+ 'Load The Arrays from the Excels-------------------------------------
+    SapList = Application.Transpose(SAPSID_Range.value)
+    'change to range not column!
+    SupplierList = Application.Transpose(SupplierSID_Range.value)
+
+    RowPasting = 2
+    
+' Create a dictionary object
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+' Load the SapList into the dictionary
+    For Each value In SapList
+        dict(value) = True
+    Next value
+    
+    For i = LBound(SupplierList) To UBound(SupplierList)
+        If Not dict.Exists(SupplierList(i)) Then
+            ShipReportMacroSheet.Range("A" & RowPasting).value = SO_Column_Range(i, 1)
+            ShipReportMacroSheet.Range("B" & RowPasting).value = PO_Column_Range(i, 1)
+            ShipReportMacroSheet.Range("C" & RowPasting).value = SupplierSID_Range(i, 1)
+            ShipReportMacroSheet.Range("D" & RowPasting).value = "Missing Value From Sap Export"
+            RowPasting = RowPasting + 1
+        End If
+    Next i
+    
+'close workbooks
+Application.Wait Now + TimeValue("0:00:01")
+Workbooks(SupplierBookName).Close SaveChanges:=True
+Workbooks(ShipReportExportName).Close SaveChanges:=True
+
+
+End Sub
+
+
+Sub Get_Headers()
+Dim currentColumn As Integer, columnHeading As String
+   
+    
+' Find the column # containing the --------------------------------------------------------------------------------------------------------------
+    For currentColumn = 1 To SupplierSheet.UsedRange.columns.Count
+        columnHeading = SupplierSheet.Cells(1, currentColumn).value
+        
+        If UCase(columnHeading) = "HP SO" Or UCase(columnHeading) = "HP SO#" Or UCase(columnHeading) = "CUST SO" Or UCase(columnHeading) = "HP SO NO" Then
+            SO_Column = currentColumn
+            Exit For
+        End If
+        
+    Next currentColumn
+
+    If SO_Column > 0 Then
+        Set SO_Column_Range = SupplierSheet.Range(SupplierSheet.Cells(2, SO_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.Count, SO_Column).End(xlUp).Row, SO_Column))
+    Else
+        MsgBox "Column with headers For Sales Order not found. check code for the strings"
+    End If
+    
+' Find the column # containing the ShipIDs--------------------------------------------------------------------------------------------------------------
+    For currentColumn = 1 To SupplierSheet.UsedRange.columns.Count
+        columnHeading = SupplierSheet.Cells(1, currentColumn).value
+        
+        If UCase(columnHeading) = "HP PO" Or UCase(columnHeading) = "PO#" Or UCase(columnHeading) = "PO NO" Then
+            PO_Column = currentColumn
+            Exit For
+        End If
+        
+    Next currentColumn
+
+    If PO_Column > 0 Then
+        Set PO_Column_Range = SupplierSheet.Range(SupplierSheet.Cells(2, PO_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.Count, PO_Column).End(xlUp).Row, PO_Column))
+    Else
+        MsgBox "Column with headers For Purchase Order not found. check code for the strings"
+    End If
+    
+End Sub

@@ -1,0 +1,164 @@
+'   version: 2024-03
+'   Created by WHS
+Option Explicit
+'Declare Public variables, usable for all subs/functions
+Private VL06ExportFileName As String, BBRawFilePath As String, BBExportFileName As String, VL06Sheet As Worksheet
+Sub VL06_Main()
+'delcare classes
+Dim Utilities As New ZenUtils
+
+    Set VL06Sheet = XlMacroBook.Sheets("VL06")
+
+    BBExportFileName = "BBExportFile " & Today & ".xls"
+    VL06ExportFileName = "VL06ExportFile " & Today & ".xls"
+    VL06Sheet.Range("A2:B99999").ClearContents
+    VL06Sheet.Range("D1").value = Now()
+    
+'get the shipids for the month to check---------------------------------------------
+    Broadband
+'open the exported data and get the DLs--------------------------------------------
+    BBRawProcessing
+'Paste The Dls and Get The Flag data-----------------------------------------------
+    VL06GetFlag
+'check for incomplete PGI aka not "C" flag and add them to the main file in vl06 sheet
+    VL06RawProcessing
+      
+    
+End Sub
+Private Sub Broadband()
+'Declare Classes
+Dim StartUp As New StartUp, Utilities As New ZenUtils
+
+'Start Sap-----------------------------------------------------------------
+    session.findById("wnd[0]").maximize
+    session.StartTransaction "ZGSUPP"
+
+
+    session.findById("wnd[0]/tbar[1]/btn[17]").press
+    session.findById("wnd[1]/usr/txtV-LOW").text = "ALLJK5252"
+    session.findById("wnd[1]/usr/txtENAME-LOW").text = ""
+    session.findById("wnd[1]/usr/txtENAME-LOW").SetFocus
+    session.findById("wnd[1]/usr/txtENAME-LOW").caretPosition = 0
+    session.findById("wnd[1]").sendVKey 8
+    session.findById("wnd[0]/tbar[1]/btn[8]").press
+
+
+'export the data and save it on "VL06Folder"--------------------------------
+    session.findById("wnd[0]/mbar/menu[0]/menu[5]/menu[2]/menu[2]").Select
+    session.findById("wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]").Select
+    session.findById("wnd[1]/tbar[0]/btn[0]").press
+    session.findById("wnd[1]/usr/ctxtDY_PATH").text = VL06Folder
+    session.findById("wnd[1]/usr/ctxtDY_FILENAME").text = BBExportFileName
+    session.findById("wnd[1]/usr/ctxtDY_FILENAME").caretPosition = 8
+    session.findById("wnd[1]/tbar[0]/btn[0]").press
+
+    
+'go back to main menu------------------------------------------------------
+    session.findById("wnd[0]/tbar[0]/okcd").text = "/N"
+    session.findById("wnd[0]").sendVKey 0
+    
+    
+    BBRawFilePath = VL06Folder & "\" & BBExportFileName
+End Sub
+Private Sub BBRawProcessing()
+    
+'open workbook sort and copy------------------------------------------------------------
+    Workbooks.Open (BBRawFilePath)
+    Range("A:O").Sort key1:=Range("F1"), order1:=xlAscending, Header:=xlNo
+    Range("F1").Select
+    Range(Selection, Selection.End(xlDown)).Copy
+    
+'save and close file-----------------------------------------
+    Workbooks(BBExportFileName).Close SaveChanges:=True
+
+End Sub
+Private Sub VL06GetFlag()
+'Declare Classes
+Dim StartUp As New StartUp, Utilities As New ZenUtils
+
+   
+'focus on sap and open vl06----------------------------------------------------------
+    session.findById("wnd[0]").iconify
+    session.findById("wnd[0]").maximize
+    session.StartTransaction "VL06"
+
+'open the vl06 and select the necessary data-----------------------------------------
+    session.findById("wnd[0]/usr/btnBUTTON6").press
+    session.findById("wnd[0]/usr/ctxtIT_WADAT-LOW").text = ""
+    session.findById("wnd[0]/usr/ctxtIT_WADAT-HIGH").text = ""
+    session.findById("wnd[0]/usr/ctxtIT_WADAT-HIGH").SetFocus
+    session.findById("wnd[0]/usr/ctxtIT_WADAT-HIGH").caretPosition = 0
+    session.findById("wnd[0]/usr/btn%_IT_VBELN_%_APP_%-VALU_PUSH").press
+    session.findById("wnd[1]/tbar[0]/btn[24]").press
+    session.findById("wnd[1]/tbar[0]/btn[8]").press
+    session.findById("wnd[0]").sendVKey 8
+ 
+ 
+ 'this is just to select the EDI variant--------------
+ 'add a bottom bar check for "No deliveries selected" here
+    session.findById("wnd[0]/tbar[1]/btn[33]").press
+    session.findById("wnd[1]/tbar[0]/btn[71]").press
+    session.findById("wnd[2]/usr/chkSCAN_STRING-START").Selected = False
+    session.findById("wnd[2]/usr/txtRSYSF-STRING").text = "EDI Team"
+    session.findById("wnd[2]/usr/chkSCAN_STRING-START").SetFocus
+    session.findById("wnd[2]/tbar[0]/btn[0]").press
+    session.findById("wnd[3]/usr/lbl[15,2]").SetFocus
+    session.findById("wnd[3]/usr/lbl[15,2]").caretPosition = 0
+    session.findById("wnd[3]").sendVKey 2
+    session.findById("wnd[1]/usr/lbl[1,3]").SetFocus
+    session.findById("wnd[1]/usr/lbl[1,3]").caretPosition = 8
+    session.findById("wnd[1]").sendVKey 2
+
+
+'export the data and save it on "VL06Folder"------------------------------
+    session.findById("wnd[0]/mbar/menu[0]/menu[5]/menu[2]").Select
+    session.findById("wnd[1]/usr/subSUBSCREEN_STEPLOOP:SAPLSPO5:0150/sub:SAPLSPO5:0150/radSPOPLI-SELFLAG[1,0]").Select
+    session.findById("wnd[1]/tbar[0]/btn[0]").press
+    session.findById("wnd[1]/usr/ctxtDY_PATH").text = VL06Folder
+    session.findById("wnd[1]/usr/ctxtDY_FILENAME").text = VL06ExportFileName
+    session.findById("wnd[1]/usr/ctxtDY_FILENAME").caretPosition = 9
+    session.findById("wnd[1]/tbar[0]/btn[0]").press
+    
+
+End Sub
+Private Sub VL06RawProcessing()
+
+Dim RTotal As String, Count As Integer, Check As String, RowPasting As Integer, VL06RawBook As Workbook, VL06RawSheet As Worksheet
+
+    RowPasting = 2
+'clear values from main file vl06 and add timestamp
+
+'open the VL06ExportFile-------------------------------------------
+    Set VL06RawBook = Workbooks.Open(VL06Folder & "\" & VL06ExportFileName)
+    Set VL06RawSheet = VL06RawBook.Worksheets(1)
+
+'Remove blank rows and deletete duplicates---------------------------
+    Rows(3).EntireRow.Delete
+    Rows(2).EntireRow.Delete
+    Rows(1).EntireRow.Delete
+    'maybe we dont need this down here
+    Range("B:C").RemoveDuplicates columns:=1, Header:=xlNo
+    '---------------------------------
+    
+'Select the rows and count them-------------------------------------
+    VL06RawSheet.Range("B1").Select
+    VL06RawSheet.Range(Selection, Selection.End(xlDown)).Select
+    RTotal = Selection.Rows.Count
+    
+ 
+'then loop down each row and look for the ones that are not "C"----
+For Count = 1 To RTotal
+    Check = Range("C" & Count)
+        If Check <> "C" Then
+'go to the main file and paste the shipid that are different than "C"-------------------------------------------------
+            VL06RawSheet.Range("B" & Count & ":C" & Count).Copy
+            VL06Sheet.Range("A" & RowPasting).PasteSpecial Paste:=xlPasteValues
+            RowPasting = RowPasting + 1
+        End If
+Next Count
+
+'Save And close workbook----------------------------------------------------------
+    Workbooks(VL06ExportFileName).Close SaveChanges:=True
+    
+
+End Sub

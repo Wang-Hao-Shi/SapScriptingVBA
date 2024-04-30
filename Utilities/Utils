@@ -1,0 +1,64 @@
+'   version: 2024-03
+'   Created by WHS
+Option Explicit
+Public Sub SetVariables()
+Dim SetUpSheet As Worksheet
+    XlMacroName = ActiveWorkbook.Name
+    Set XlMacroBook = Workbooks(XlMacroName)
+    Set XlMainSheet = XlMacroBook.Sheets("Main")
+    Set SetUpSheet = XlMacroBook.Sheets("SetUp")
+    XlMacroFolder = SetUpSheet.Range("B7").value
+    NoESDFolder = SetUpSheet.Range("B8").value
+    VL06Folder = SetUpSheet.Range("B9").value
+    ShipReportFolder = SetUpSheet.Range("B10").value
+    Today = " " & Format(Now(), "yyyy-mm-dd")
+    Today = Today & " (" & Format(Now(), "hh-mm AM/PM") & ")"
+End Sub
+Public Sub TurnOffFunctionality()
+    Application.Calculation = xlCalculationManual
+    Application.DisplayStatusBar = False
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+End Sub
+Public Sub TurnOnFunctionality()
+    Application.Calculation = xlCalculationAutomatic
+    Application.DisplayStatusBar = True
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+End Sub
+Public Sub CloseSAP()
+    session.findById("wnd[0]/tbar[0]/okcd").text = "/N"
+    session.findById("wnd[0]").sendVKey 0
+    session.findById("wnd[0]").Close
+On Error Resume Next
+    session.findById("wnd[1]/usr/btnSPOP-OPTION2").press
+On Error GoTo 0
+End Sub
+Public Sub SE16N_Loop_Load()
+Dim CurrentRow As Long, TotalCells As Long
+'Get the total cells to loop down------------------------------------------------------------------
+    TotalCells = session.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").RowCount
+    CurrentRow = 1
+'Loop down until TotalCells to load data-----------------------------------------------------------
+    Do While CurrentRow < TotalCells
+        session.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").currentCellRow = CurrentRow
+        CurrentRow = CurrentRow + 36
+    Loop
+End Sub
+Public Sub OpenSapEXE()
+Dim objWMIService, colProcesses
+'Set The Objects and look for SAP.exe--------------------------------------------------------------
+    Set objWMIService = GetObject("winmgmts:")
+    Set colProcesses = objWMIService.ExecQuery("Select * from Win32_Process where name='saplogon.exe'")
+    If colProcesses.Count Then
+        Exit Sub
+    Else
+'if not found then open SAP.exe--------------------------------------------------------------------
+        Shell "C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe", vbNormalFocus
+        Do Until CreateObject("WScript.Shell").AppActivate("SAP Logon ")
+        Application.Wait Now + TimeValue("0:00:01")
+        Loop
+    End If
+End Sub

@@ -1,0 +1,42 @@
+'   version: 2024-03
+'   Created by WHS
+Option Explicit
+'Declare Variables----------------------------------------------------------------------------------------
+Public NoESDFolder As String, NoESDName As String, XlMacroFolder As String, XlMacroName As String, VL06Folder As String, XlMainSheet As Worksheet
+Public VL06Name As String, ShipReportFolder As String, Today As String, session, XlMacroBook As Workbook, SapGui
+
+'to send the 2 variables on the button is like this, include all quotation marks: 'Principal "GSSO","DCP"'
+
+Public Sub Principal(SubName As String, Optional SystemSelection = "")
+'Declare Classes
+Dim Utilities As New ZenUtils, StartUp As New StartUp
+
+    
+'Set Important  Variables For Modules To Use-------------------------------------------------
+    Utilities.SetVariables
+    
+'if SystemSelection Empty Select System------------------------------------------------------
+    If SystemSelection = "" Then SystemSelection = System_Selection.Choose_Option()
+
+'Start Sap-----------------------------------------------------------------------------------
+    StartUp.ConnectSession (SystemSelection)
+    StartUp.VerifiyWindow
+    session.findById("wnd[0]").iconify
+    
+'Turn Off Functionalities To Save Some Resources---------------------------------------------
+    Utilities.TurnOffFunctionality
+    
+'Call The Required Program With The SubName Variable-----------------------------------------
+   Application.Run SubName
+    
+'close window--------------------------------------------------------------------------------
+    Utilities.CloseSAP
+    
+'Turn On Functionalities---------------------------------------------------------------------
+    Utilities.TurnOnFunctionality
+    
+'message the program is done-----------------------------------------------------------------
+    Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
+    MsgBox "The Program Is Done", vbInformation
+
+End Sub

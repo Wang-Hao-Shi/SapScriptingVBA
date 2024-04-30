@@ -1,0 +1,76 @@
+'   version: 2024-03
+'   Created by WHS
+Option Explicit
+'Log In SAP----------------------------------------------------------------------------------------------------------------------------------------------------------------
+Public Sub Connect(SystemSelection As String)
+'Declare Variables/Clasees
+Dim connection As Object, x As Integer, BottomTextBar As String, LogInFailed As String
+Dim Utilities As New ZenUtils
+    
+Retry:
+      
+'Open Sap & Set Connection-------------------------------------------------------------------------------------------------------------------
+    Utilities.OpenSapEXE
+    Set SapGui = GetObject("SAPGUI")
+    Set session = SapGui.GetScriptingEngine()
+    
+On Error Resume Next
+    Set connection = session.OpenConnection(SystemSelection, True)
+    If Err = 1000 Then
+        MsgBox "Please make sure the connections are named:" & vbNewLine & "*  DCP for S4" & vbNewLine & "*  R00 for Fusion." & vbNewLine & "If you dont want to change their names you will have to login manually", vbCritical, Err.Description
+        End
+    End If
+On Error GoTo 0
+
+Set session = connection.Children(0)
+
+If SystemSelection = "DCP" Then GoTo S4
+If SystemSelection = "R00" Then GoTo Fusion
+
+'-----------------------------------------
+Fusion:
+    session.findById("wnd[0]/usr/txtRSYST-MANDT").text = "007"
+    session.findById("wnd[0]/usr/txtRSYST-BNAME").text = Sheet1.Range("B3").text
+    Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
+    session.findById("wnd[0]/usr/pwdRSYST-BCODE").text = Password_Form.Input_Password()
+    session.findById("wnd[0]/usr/txtRSYST-LANGU").text = "EN"
+    GoTo Continue
+'-----------------------------------------
+S4:
+    session.findById("wnd[0]/usr/txtRSYST-MANDT").text = "300"
+    session.findById("wnd[0]/usr/txtRSYST-BNAME").text = Sheet1.Range("B2").text
+    Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
+    session.findById("wnd[0]/usr/pwdRSYST-BCODE").text = Password_Form.Input_Password()
+    session.findById("wnd[0]/usr/txtRSYST-LANGU").text = "EN"
+    GoTo Continue
+'-----------------------------------------
+
+Continue:
+    session.findById("wnd[0]").sendVKey 0 'ENTER
+
+'checks if its has an "incorrect Password" if so then retries to log in---------------------
+On Error Resume Next
+    BottomTextBar = session.findById("wnd[0]/sbar/pane[0]").text
+    If BottomTextBar = "Name or password is incorrect (repeat logon)" Then
+        session.findById("wnd[0]").Close
+        x = MsgBox(BottomTextBar, vbOKCancel, "Error 404")
+        If x = 2 Then End
+        BottomTextBar = ""
+        GoTo Retry
+    End If
+    
+'close the other sessions and continue with this one!----------------------------------------
+        session.findById("wnd[1]/usr/radMULTI_LOGON_OPT1").Select
+        session.findById("wnd[1]/tbar[0]/btn[0]").press
+ 
+'close login failed popup------------------------------------------------------------------------------------------------------------------------------------------------
+LogInFailed = session.findById("wnd[1]/usr/txtMESSTXT1").text
+On Error GoTo 0
+'Select Text Box And Close it, only if its failed logon attempt---------------------------------------------------------------------
+    If (LogInFailed = "Number of failed password logon attempts: 1 (see") Or (LogInFailed = "Number of failed password logon attempts: 2 (see") Or (LogInFailed = "Number of failed password logon attempts: 3 (see") Or (LogInFailed = "Number of failed password logon attempts: 4 (see") Then
+        session.findById("wnd[1]/usr/txtIK1").SetFocus
+        session.findById("wnd[1]/usr/txtIK1").caretPosition = 0
+        session.findById("wnd[1]/tbar[0]/btn[0]").press
+    End If
+
+End Sub
