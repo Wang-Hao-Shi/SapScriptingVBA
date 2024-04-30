@@ -9,14 +9,14 @@ Public VL06Name As String, ShipReportFolder As String, Today As String, session,
 
 Public Sub Principal(SubName As String, Optional SystemSelection = "")
 'Declare Classes
-Dim Utilities As New ZenUtils, StartUp As New StartUp
+Dim Utilities As New Utils, StartUp As New StartUp
 
     
 'Set Important  Variables For Modules To Use-------------------------------------------------
     Utilities.SetVariables
     
 'if SystemSelection Empty Select System------------------------------------------------------
-    If SystemSelection = "" Then SystemSelection = System_Selection.Choose_Option()
+    If SystemSelection = "" Then SystemSelection = 'insert inputbox here to get the system
 
 'Start Sap-----------------------------------------------------------------------------------
     StartUp.ConnectSession (SystemSelection)
@@ -36,7 +36,7 @@ Dim Utilities As New ZenUtils, StartUp As New StartUp
     Utilities.TurnOnFunctionality
     
 'message the program is done-----------------------------------------------------------------
-    Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
+    'activate the excel here or else the msgbox wont popup until excel is in focus
     MsgBox "The Program Is Done", vbInformation
 
 End Sub
