@@ -1,104 +1,94 @@
-'   version: 2024-03
-'   Created by WHS
 Option Explicit
-Private Response As Integer
-Public Sub ConnectSession(SystemSelection As String)
-'Declare Classes / Variables
-Dim Login As New Login, Utilities As New ZenUtils
-Dim listClientsCount As Long, Msg As String, x As VbMsgBoxResult, sapsessions, tester, connection, WasFound As Boolean, i As Integer
+Private Response As Integer, Utilities As New ZenUtils
+'----------------------------
+'   Version: 2024-06        -
+'   Created by Jose Javier  -
+'   jjcb@hpe.com            -
+'----------------------------
+Public Sub ConnectSession(SystemSelection As String): On Error GoTo Handler
+Dim LogIn As New LogIn
+Dim sapsessions, tester, connection, WasFound As Boolean
 
-'Open Sap & Set Connection-------------------------------------------------------------------------------------------------------------------
     Utilities.OpenSapEXE
     Set SapGui = GetObject("SAPGUI")
-    Set session = SapGui.GetScriptingEngine()
-    
-'see if there is a session loaded aka a window of s4/fusion open----------------------------------------------------------------------------------------------------------------
-listClientsCount = session.Children.Count
+    Set Session = SapGui.GetScriptingEngine()
 
-'if no session then login-----------------------------------------------------------------------------------------------------------------------------------------------
-If listClientsCount = 0 Then
-    Login.Connect SystemSelection
+If Session.Children.count = 0 Then
+    LogIn.Connect SystemSelection
     Set SapGui = GetObject("SAPGUI")
-    Set session = SapGui.GetScriptingEngine()
-    Set connection = session.Children(0)
-    Set session = connection.Children(0)
+    Set Session = SapGui.GetScriptingEngine()
+    Set connection = Session.Children(0)
+    Set Session = connection.Children(0)
     Exit Sub
 End If
 
-'Verify the Window logged in if the transaction requieres a specific System s4 / fusion----------------------------------------------------------------------------------
-If listClientsCount = 1 Then
-    Set connection = session.Children(0)
-    Set session = connection.Children(0)
-    If SystemSelection <> session.info.SystemName Then
-        MsgBox "You Have " & session.info.SystemName & " open but this transaction requires " & SystemSelection & vbNewLine & " Now Connecting to the correct system", vbExclamation, "Connecting to the correct system"
-        Login.Connect SystemSelection
+If Session.Children.count = 1 Then
+    Set connection = Session.Children(0)
+    Set Session = connection.Children(0)
+    If SystemSelection <> Session.info.SystemName Then
+        MsgBox "You Have " & Session.info.SystemName & " open but this transaction requires " & SystemSelection & vbNewLine & " Now Connecting to the correct system", vbExclamation, "Connecting to the correct system"
+        LogIn.Connect SystemSelection
         Exit Sub
     Else
-        NotLogin SystemSelection
+        If Session.info.Transaction = "S000" Then
+            Session.findById("wnd[0]").Close
+            LogIn.Connect SystemSelection
+        End If
     End If
     Exit Sub
 End If
-    
-'see how many connetions there are, if more than one select which if not use the default one------------------------------------------------------------------------------
-If listClientsCount > 1 Then
-    For Response = 1 To listClientsCount
-        Set tester = session.Children(CInt(Response - 1))
+
+If Session.Children.count > 1 Then
+    For Response = 1 To Session.Children.count
+        Set tester = Session.Children(CInt(Response - 1))
         If SystemSelection = tester.Description Then
-            Set session = session.Children(Response - 1)
-            Set session = session.Children(0)
-            NotLogin SystemSelection
+            Set Session = Session.Children(Response - 1)
+            Set Session = Session.Children(0)
+            If Session.info.Transaction = "S000" Then
+                Session.findById("wnd[0]").Close
+                LogIn.Connect SystemSelection
+            End If
             WasFound = True
             Exit Sub
         End If
     Next Response
-    If Not WasFound Then
-        Login.Connect SystemSelection
-    End If
+    If Not WasFound Then LogIn.Connect SystemSelection
 End If
+Exit Sub
+Handler: Utilities.ErrorHandler
 End Sub
-Public Sub VerifiyWindow()
-'Declare Variables/Classes
-Dim Count As Integer, WasFound As Boolean
+Public Sub VerifyWindow(): On Error GoTo Handler
+Dim count As Integer, WasFound As Boolean
 Dim tester, sapsessions
-    
-'See if the first Window is session manager or Tcode-------------------------------------
-If session.info.Transaction <> "SESSION_MANAGER" Then
+
+If Session.info.Transaction <> "SESSION_MANAGER" Then
 If Response = 0 Then Response = 1
 LookForSESSION_MANAGER:
     Set SapGui = GetObject("SAPGUI")
-    Set session = SapGui.GetScriptingEngine()
-    Set sapsessions = session.Children(Response - 1)
-        
-        For Count = 1 To sapsessions.Children.Count
-'Looks for the window that is on the main menu and selects it if there are none creates one and selects it-----------------------------------------------------------------
-            Set tester = sapsessions.Children(CInt(Count - 1))
+    Set Session = SapGui.GetScriptingEngine()
+    Set sapsessions = Session.Children(Response - 1)
+
+        For count = 1 To sapsessions.Children.count
+            Set tester = sapsessions.Children(CInt(count - 1))
                 If tester.info.Transaction = "SESSION_MANAGER" Then
                     WasFound = True
-                    Set session = tester
-                    GoTo Skips
+                    Set Session = tester
+                    Exit Sub
                 End If
-        Next Count
-        
+        Next count
+
     If Not WasFound Then
-        Set session = session.Children(Response - 1)
-        Set session = session.Children(0)
+        Set Session = Session.Children(Response - 1)
+        Set Session = Session.Children(0)
         Application.Wait Now + TimeValue("0:00:01")
-        session.CreateSession
-        Application.Wait Now + TimeValue("0:00:01")
+        Session.CreateSession
         GoTo LookForSESSION_MANAGER:
     End If
-        Set session = session.Children(Response - 1)
-        Set session = session.Children(0)
-        GoTo Skips
+        Set Session = Session.Children(Response - 1)
+        Set Session = Session.Children(0)
+        Exit Sub
 End If
-    
-Skips:
-End Sub
-'verifiy that you are not on the login screen if there is a window of the system open
-Public Sub NotLogin(SystemSelection As String)
-Dim Login As New Login
-If session.info.Transaction = "S000" Then
-    session.findById("wnd[0]").Close
-    Login.Connect SystemSelection
-End If
+
+Exit Sub
+Handler: Utilities.ErrorHandler
 End Sub
