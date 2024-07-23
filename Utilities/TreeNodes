@@ -1,0 +1,171 @@
+'SAP TREE LOADING----------------------------SAP TREE LOADING------------------------------------SAP TREE LOADING---------------------------------SAP TREE LOADING----
+'   Function converts nodePath
+'       1\1\1 --> 1\2
+'       1\2\1 --> 1\3
+'       and so on ...
+'---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Public Function getNextNodePathParent(ByVal nodePath As String) As String
+    Dim nodeList() As String
+    Dim nodePathNew As String
+    
+    If InStr(nodePath, "\") > 0 Then
+        nodeList = Split(nodePath, "\")
+        
+        If UBound(nodeList) > 0 Then
+            nodeList(UBound(nodeList) - 1) = CStr(CInt(nodeList(UBound(nodeList) - 1)) + 1)
+            nodePathNew = Join(nodeList, "\")
+        End If
+    Else
+        nodePathNew = CStr(CInt(nodePath) + 1)
+    End If
+    
+    getNextNodePathParent = nodePathNew
+    Erase nodeList
+End Function
+
+'---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+'   Function converts nodePath
+'       1\1\1 --> 1\1\2
+'       1\2\1 --> 1\2\2
+'       and so on ...
+'---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Public Function getNextNodePath(ByVal nodePath As String) As String
+    Dim nodeList() As String
+    Dim nodePathNew As String
+    
+    If InStr(nodePath, "\") > 0 Then
+        nodeList = Split(nodePath, "\")
+        
+        If UBound(nodeList) > 0 Then
+            nodeList(UBound(nodeList)) = CStr(CInt(nodeList(UBound(nodeList))) + 1)
+            nodePathNew = Join(nodeList, "\")
+        End If
+    Else
+        nodePathNew = CStr(CInt(nodePath) + 1)
+    End If
+    
+    getNextNodePath = nodePathNew
+    Erase nodeList
+End Function
+Public Function Load_SAP_TreeStructure(ByVal WindowSID As String, vTreeStructure As T_SAP_Tree, Optional searchForQuery As String = "") As Boolean
+    
+Dim i As Long, j As Long, k As Long, t As Long, countChildren As Long, childNodeIndex As Long
+Dim nodePath As String, nodeKey As String, loadingIndicator As String, Items() As String, childItems() As String
+Dim childNodeKey As String, childNodePath As String
+Dim o As Object, childNodes() As T_SAP_ChildNode
+
+
+
+    nodePath = "1"
+    loadingIndicator = "|"
+    ReDim vTreeStructure.listTreeNodes(0)
+    vTreeStructure.listTreeNodes(0).nodeKey = ""
+    vTreeStructure.listTreeNodes(0).nodePath = ""
+    vTreeStructure.listTreeNodes(0).nodeItems = Null
+    vTreeStructure.listTreeNodes(0).hasChildren = False
+    'vTreeStructure.SID = WindowSID
+    vTreeStructure.selectedNodeKey = ""
+    ReDim vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).childNodes(0 To 0) As T_SAP_ChildNode
+
+    Set o = Session.findById(WindowSID).GetColumnNames
+    ReDim vTreeStructure.columns(o.Length)
+
+    For i = 0 To o.Length - 1
+        If CStr(o(i)) <> "" Then
+            vTreeStructure.columns(i).columnName = CStr(o(i))
+        End If
+    Next i
+
+    Set o = Nothing
+
+    Set o = Session.findById(WindowSID).GetColumnTitles
+
+    For i = 0 To o.Length - 1
+        If CStr(o(i)) <> "" Then
+            vTreeStructure.columns(i).columnTitle = Session.findById(WindowSID).GetColumnTitleFromName(CStr(o(i)))
+        End If
+    Next i
+
+    Set o = Nothing
+
+    Do
+        nodeKey = Session.findById(WindowSID).GetNodeKeyByPath(nodePath)
+
+        If nodeKey > "" Then
+            If vTreeStructure.listTreeNodes(0).nodeKey <> "" Then ReDim Preserve vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes) + 1)
+
+            vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).nodeKey = nodeKey
+            vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).nodePath = nodePath
+            ReDim Items(0): Items(0) = ""
+
+            For i = LBound(vTreeStructure.columns) To UBound(vTreeStructure.columns)
+                If Items(0) <> "" Then ReDim Preserve Items(UBound(Items) + 1)
+                Items(UBound(Items)) = Session.findById(WindowSID).GetItemText(nodeKey, vTreeStructure.columns(i).columnName)
+                
+
+                For j = LBound(Items) To UBound(Items)
+                    If CStr(Items(j)) = CStr(searchForQuery) Then
+                        Load_SAP_TreeStructure = True
+                        vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).nodeItems = Items
+                        'verify here if its a file or folder how? idk
+                        
+                        countChildren = Session.findById(WindowSID).GetNodeChildrenCount(nodeKey)
+                        If countChildren > 0 Then 'get the children here
+                            ReDim childNodes(1 To countChildren) As T_SAP_ChildNode ' Dimension the childNodes array to hold all child nodes
+
+                            For k = 1 To countChildren
+                                childNodePath = nodePath & "\" & k
+                                childNodeKey = Session.findById(WindowSID).GetNodeKeyByPath(childNodePath)
+
+                                If childNodeKey <> "" Then
+                                    ReDim childItems(LBound(vTreeStructure.columns) To UBound(vTreeStructure.columns))
+                                    For t = LBound(vTreeStructure.columns) To UBound(vTreeStructure.columns)
+                                        childItems(t) = Session.findById(WindowSID).GetItemText(childNodeKey, vTreeStructure.columns(t).columnName)
+                                    Next t
+
+                                    ' Create a new child node
+                                    childNodeIndex = childNodeIndex + 1
+                                    childNodes(childNodeIndex).nodeKey = childNodeKey
+                                    childNodes(childNodeIndex).nodePath = childNodePath
+                                    childNodes(childNodeIndex).nodeItems = childItems
+                                    childNodes(childNodeIndex).hasChildren = (Session.findById(WindowSID).GetNodeChildrenCount(childNodeKey) > 0)
+                                End If
+                            Next k
+
+                            ' Resize the childNodes array to remove any unused elements
+                            ReDim Preserve childNodes(1 To childNodeIndex)
+
+                            ' Add all child nodes to the main vTreeStructure as children of the parent node
+                            vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).childNodes = childNodes
+                            vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).hasChildren = True
+                        End If
+                        Exit Do
+                    End If
+                Next j
+            Next i
+
+            vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).nodeItems = Items
+
+            countChildren = Session.findById(WindowSID).GetNodeChildrenCount(nodeKey)
+
+            If Session.findById(WindowSID).IsFolderExpandable(nodeKey) Then countChildren = 1
+
+            If countChildren > 0 Then
+                Session.findById(WindowSID).ExpandNode vTreeStructure.listTreeNodes(UBound(vTreeStructure.listTreeNodes)).nodeKey
+                nodePath = nodePath & "\" & 1
+            Else
+                nodePath = getNextNodePath(nodePath)
+            End If
+
+            Application.StatusBar = "SAP: loading tree structure (this might take a while) " & loadingIndicator
+            loadingIndicator = IIf(loadingIndicator = "|", "/", IIf(loadingIndicator = "/", "-", IIf(loadingIndicator = "-", "\", "|")))
+            
+        Else
+            If InStr(nodePath, "\") > 0 Then
+                nodeKey = "do not exit please"
+                nodePath = getNextNodePathParent(nodePath)
+            End If
+        End If
+    Loop While nodeKey > ""
+    
+End Function
