@@ -1,0 +1,125 @@
+'   version: 2024-04
+'   Created by Jose Javier, modified tree by Jose Javier
+'   jjcb@hpe.com
+
+Option Explicit
+
+Public Type T_SAP_ChildNode
+    nodeKey As String
+    nodePath As String
+    nodeItems() As String
+    hasChildren As Boolean
+End Type
+
+Public Type T_SAP_TreeNode
+    nodeKey As String
+    nodePath As String
+    nodeItems As Variant
+    hasChildren As Boolean
+    childNodes() As T_SAP_ChildNode
+End Type
+
+Public Type T_SAP_TreeColumn
+    columnName As String
+    columnTitle As String
+End Type
+
+Public Type T_SAP_Tree
+    'SID As String
+    selectedNodeKey As String
+    columns() As T_SAP_TreeColumn
+    listTreeNodes() As T_SAP_TreeNode
+End Type
+Sub Order_Cordinator_Log()
+'Declare Variables
+Dim RTotal As Long, count As Long, BottomTextBar As String, SO As String, j As Long, k As Long, Texts As String, OCL_Texts As String, OCL_Screen As String, OCLSheet As Worksheet
+'Declare Classes
+Dim StartUp As New StartUp, Utilities As New ZenUtils
+Dim treeStructure As T_SAP_Tree
+    
+    OCL_Screen = "wnd[0]/usr/tabsTAXI_TABSTRIP_HEAD/tabpT\10/ssubSUBSCREEN_BODY:SAPMV45A:4152/subSUBSCREEN_TEXT:SAPLV70T:2100/cntlSPLITTER_CONTAINER/shellcont/shellcont/shell/shellcont[0]/shell"
+    Set OCLSheet = XlMacroBook.Sheets("Sales Orders")
+
+
+    OCLSheet.Activate
+    OCLSheet.Range("B2:B99999").ClearContents
+    OCLSheet.Range("A:A").RemoveDuplicates columns:=1, Header:=xlYes
+    OCLSheet.Range("A2").Select
+    Range(Selection, Selection.End(xlDown)).Select
+    RTotal = Selection.Rows.count
+
+
+
+'then loop down each row and look for the text--------------------------------------------------
+For count = 2 To RTotal + 1
+
+'Go to the main VA03 Screen---------------------------------------------------------------------
+    Session.findById("wnd[0]").maximize
+    Session.findById("wnd[0]/tbar[0]/okcd").text = "/NVA03"
+    Session.findById("wnd[0]").sendVKey 0
+    
+'put the SO and open it-------------------------------------------------------------------------
+    SO = OCLSheet.Range("A" & count).Value
+    Session.findById("wnd[0]/usr/ctxtVBAK-VBELN").text = SO
+    Session.findById("wnd[0]").sendVKey 0
+    
+'check to see if the SO is valid or not---------------------------------------------------------
+    BottomTextBar = Session.findById("wnd[0]/sbar/pane[0]").text
+        If BottomTextBar = "SD document " & SO & " is not in the database or has been archived" Then
+            OCLSheet.Range("B" & count).Value = BottomTextBar
+            GoTo Skips
+        End If
+        
+'opens the texts tab-----------------------------------------------------------------------------
+
+
+
+    Session.findById("wnd[0]/mbar/menu[2]/menu[1]/menu[10]").Select
+    
+'dummy command to wait for the program to load before the IF, cant use app.wait because is not always the same time
+    Session.findById ("wnd[0]/mbar/menu[2]/menu[1]")
+        
+'Load tree structure----------------------------------------------------------------------------
+    If Utilities.Load_SAP_TreeStructure(OCL_Screen, treeStructure, "Order Coordinator log") Then
+        For j = LBound(treeStructure.listTreeNodes) To UBound(treeStructure.listTreeNodes)
+            If treeStructure.listTreeNodes(j).nodeItems(0) = "Order Coordinator log" And treeStructure.listTreeNodes(j).hasChildren = True Then
+             
+' Iterate through the child nodes of the "Order Coordinator log" node---------------------------
+                For k = LBound(treeStructure.listTreeNodes(j).childNodes) To UBound(treeStructure.listTreeNodes(j).childNodes)
+                    Dim childNode As T_SAP_ChildNode
+                    childNode = treeStructure.listTreeNodes(j).childNodes(k)
+                    
+' Get the text from each child node using SAP scripting and node keys---------------------------
+                    If Not IsNull(childNode.nodeKey) Then
+                    
+' Use SAP scripting to get the text associated with the child node------------------------------
+                        Session.findById(OCL_Screen).doubleClickItem childNode.nodeKey, "Column1"
+                        OCL_Texts = Session.findById("wnd[0]/usr/tabsTAXI_TABSTRIP_HEAD/tabpT\10/ssubSUBSCREEN_BODY:SAPMV45A:4152/subSUBSCREEN_TEXT:SAPLV70T:2100/cntlSPLITTER_CONTAINER/shellcont/shellcont/shell/shellcont[1]/shell").text
+                    End If
+                    
+' check if the texts is longer than x characters if so add it to the excel and continue---------
+                    If Len(OCL_Texts) > 10 Then
+                        OCLSheet.Range("B" & count).Value = OCL_Texts
+                        GoTo Skips
+                    End If
+                Next k
+' if it dosent have children then just write the main file texts to the excel-------------------
+            ElseIf treeStructure.listTreeNodes(j).hasChildren = False Then
+                Session.findById(OCL_Screen).doubleClickItem treeStructure.listTreeNodes(j).nodeKey, "Column1"
+                OCLSheet.Range("B" & count).Value = Session.findById("wnd[0]/usr/tabsTAXI_TABSTRIP_HEAD/tabpT\10/ssubSUBSCREEN_BODY:SAPMV45A:4152/subSUBSCREEN_TEXT:SAPLV70T:2100/cntlSPLITTER_CONTAINER/shellcont/shellcont/shell/shellcont[1]/shell").text
+            End If
+        Next j
+    Else
+        Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
+        MsgBox "coudnt find 'Order Coordinator Log' inside the header tab"
+    End If
+Skips:
+Next count
+    XlMainSheet.Range("C19").Value = "Done!  " & Today
+
+End Sub
+
+Sub EnableScreen()
+Dim U As New ZenUtils
+U.TurnOnFunctionality
+End Sub
