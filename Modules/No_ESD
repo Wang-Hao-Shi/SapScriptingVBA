@@ -1,12 +1,13 @@
 '   version: 2024-03
-'   Created by WHS
+'   Created by Jose Javier
+'   jjcb@hpe.com
 Option Explicit
-Private PBIFinalPath As String, RawPBIFilePath As String, RawPBIFileName As String, RawPBIBook As Workbook, RawPBISheet As Worksheet, RawPBIRange As Range
-Private RawE2EFilePath As String, RawE2EFileName As String, Count As Integer, RTotal As Integer, RawE2ESheet As Worksheet, RawE2EBook As Workbook
+Private PBIFinalPath As String, RawPBIFilePath As String, RawPBIFileName As String, RawPBIBook As Workbook, RawPBISheet As Worksheet, RawPBI_PO As Range, RawPBIFactory As Range
+Private RawE2EFilePath As String, RawE2EFileName As String, Count As Integer, RTotal As Integer, RawE2ESheet As Worksheet, RawE2EBook As Workbook, Utilities As New ZenUtils
 
 Sub NOESD_Main()
 'Declare Classes
-Dim Utilities As New ZenUtils, StartUp As New StartUp
+Dim StartUp As New StartUp
 
 
 RawE2EFileName = "E2E Raw Data" & Today & ".xlsx"
@@ -24,7 +25,7 @@ RawE2EFilePath = NoESDFolder & "\" & RawE2EFileName
     CompareData
     
     
-XlMainSheet.Range("B35").value = "Done!  " & Today
+XlMainSheet.Range("B19").Value = "Done!  " & Today
 
 End Sub
 Private Sub RenamePWBIExport()
@@ -44,13 +45,10 @@ If Err <> 0 Then
     GoTo TryAgain
 End If
 On Error GoTo 0
-    Err.Clear
     
 'set the file path and name for the other subs-----------------------------
     RawPBIFilePath = NoESDFolder & "\" & PBINewName
     RawPBIFileName = PBINewName
-    Application.Wait Now + TimeValue("0:00:03")
-    
     
 End Sub
 Private Sub SpringCleanRawPBI()
@@ -65,120 +63,138 @@ Set RawPBISheet = RawPBIBook.Sheets(1)
 
     RawPBISheet.Activate
 
-RawPBISheet.columns("E").Insert XlDirection.xlToRight
-RawPBISheet.columns("E").value = columns("B").value
-RawPBISheet.columns("B:B").Delete
+RawPBISheet.Columns("E").Insert XlDirection.xlToRight
+RawPBISheet.Columns("E").Value = Columns("B").Value
+RawPBISheet.Columns("B:B").Delete
 
 ' Delete irrelevant columns--------------------------------------------------------------------
-        For currentColumn = RawPBISheet.UsedRange.columns.Count To 1 Step -1
-            columnHeading = RawPBISheet.UsedRange.Cells(1, currentColumn).value
+        For currentColumn = RawPBISheet.UsedRange.Columns.Count To 1 Step -1
+            columnHeading = RawPBISheet.UsedRange.Cells(1, currentColumn).Value
 
             Select Case columnHeading
-            Case "SAP ON", "Supplier PO #", "Order type", "Factory Name", "ESD", "ItemValidation", "AMSEDIFallout.Issue Category", "AMSEDIFallout.Sub - Issue Category", "AMSEDIFallout.Responsible Team", "AMSEDIFallout.IT Ticket #", "AMSEDIFallout.Comments"
+            Case "SAP ON", "Supplier PO #", "Order type", "Factory Name", "ESD", "ItemValidation", "AMSEDIFallout.Issue Category", "AMSEDIFallout.Sub - Issue Category", "AMSEDIFallout.Responsible Team", "AMSNOESD.Comments", "AMSEDIFallout.IT Ticket #", "AMSEDIFallout.Comments"
                 ' Yello!
                 Case Else
-                    RawPBISheet.columns(currentColumn).Delete
+                    RawPBISheet.Columns(currentColumn).Delete
             End Select
         Next
 
 ''converts the column from text to number and removed dupes--------------------------------------------
 RawPBISheet.Range("A:A").TextToColumns , xlDelimited, xlTextQualifierNone, , True
 RawPBISheet.Range("B:B").TextToColumns , xlDelimited, xlTextQualifierNone, , True
-RawPBISheet.Range("A:K").RemoveDuplicates columns:=2, Header:=xlYes
-'
+RawPBISheet.Range("A:L").RemoveDuplicates Columns:=2, Header:=xlYes
+
 ''sorts to better see the raw data not needed if you dont want to see the raw data---------------------
-RawPBISheet.Range("A:K").Sort key1:=Range("D1"), order1:=xlAscending, Header:=xlYes
-RawPBISheet.Range("A:K").Sort key1:=Range("F1"), order1:=xlDescending, Header:=xlYes
-RawPBISheet.Range("A:K").Sort key1:=Range("K1"), order1:=xlAscending, Header:=xlYes
-RawPBISheet.Range("A:F").columns.AutoFit
+RawPBISheet.Range("A:L").Sort key1:=Range("D1"), order1:=xlAscending, Header:=xlYes
+RawPBISheet.Range("A:L").Sort key1:=Range("G1"), order1:=xlAscending, Header:=xlYes
+RawPBISheet.Range("A:L").Sort key1:=Range("L1"), order1:=xlAscending, Header:=xlYes
+RawPBISheet.Range("A:L").Sort key1:=Range("F1"), order1:=xlDescending, Header:=xlYes
+RawPBISheet.Range("A:F").Columns.AutoFit
 
 
+
+RTotal = RawPBISheet.Cells(RawPBISheet.Rows.Count, "A").End(xlUp).Row
 
 'find the first real order to check in the E2E---------------------------------------------------------
-RawPBISheet.Range("B2").Select
-RawPBISheet.Range(Selection, Selection.End(xlDown)).Select
-RTotal = Selection.Rows.Count
-
-
-For Count = 2 To RTotal + 1
+For Count = 2 To RTotal
     CheckFlag = RawPBISheet.Range("F" & Count)
-    CheckComment = RawPBISheet.Range("K" & Count)
+    CheckComment = RawPBISheet.Range("G" & Count).Value & RawPBISheet.Range("L" & Count).Value
 'look for the first that are "check" and has no comment--------------------------------------
     If CheckFlag = "Check" And CheckComment = "" Then
 'colour and sort the rows that are already done---------------------------------------------
-        RawPBISheet.Range("A2:K" & Count - 1).Interior.ColorIndex = 3
-        'need to add a way to sort by colour
+        RawPBISheet.Range("A2:L" & Count - 1).Interior.ColorIndex = 3
 'select the rows for checking on the E2EDB------------------------------------------------
         RawPBISheet.Range("A" & Count).Select
-        RawPBISheet.Range(Selection, Selection.End(xlDown)).Copy
-        Set RawPBIRange = RawPBISheet.Range("B" & Count, RawPBISheet.Range("B" & Count).End(xlDown))
-        Application.Wait Now + TimeValue("0:00:03")
-        Exit For
+        Dim x As Long
+        x = RawPBISheet.Cells(RawPBISheet.Rows.Count, "A").End(xlUp).Row
+        RawPBISheet.Range("A" & Count & ":A" & x).Copy
+        Set RawPBI_PO = RawPBISheet.Range("B" & Count & ":B" & x)
+        Set RawPBIFactory = RawPBISheet.Range("D" & Count & ":D" & x)
+        Exit Sub
+    ElseIf Count = RTotal Then
+    RawPBISheet.Range("A2:L" & Count).Interior.ColorIndex = 3
+    MsgBox "All Orders Have comment or ESD" & vbNewLine & vbNewLine & "The Program will now exit", vbInformation
+    Utilities.TurnOnFunctionality
+    End
     End If
 Next Count
 
 End Sub
 Private Sub Export_E2EDB()
 
-
-session.findById("wnd[0]").iconify
-session.findById("wnd[0]").maximize
-session.StartTransaction "ZE2EDB_LITE"
+With Session
+    .findById("wnd[0]").iconify
+    .findById("wnd[0]").maximize
+    .StartTransaction "ZE2EDB_LITE"
     
 'set the checkmarks on closed and higher level items only-------
-session.findById("wnd[0]/usr/chkCB_CLSD").Selected = True
-session.findById("wnd[0]/usr/chkCB_HIGH").Selected = True
-'add variant-----------------------------------------------------
-session.findById("wnd[0]/usr/ctxtP_VARI").text = "/AMSEDINOESD"
-session.findById("wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH").press
-session.findById("wnd[1]/tbar[0]/btn[24]").press
-session.findById("wnd[1]/tbar[0]/btn[8]").press
-session.findById("wnd[0]").sendVKey 8
-session.findById("wnd[0]/tbar[1]/btn[43]").press
-session.findById("wnd[1]/usr/ctxtDY_FILENAME").text = RawE2EFileName
-session.findById("wnd[1]/usr/ctxtDY_PATH").caretPosition = 41
-session.findById("wnd[1]").sendVKey 4
-session.findById("wnd[2]/usr/ctxtDY_PATH").text = NoESDFolder
-session.findById("wnd[2]/usr/ctxtDY_PATH").caretPosition = 74
-session.findById("wnd[2]/tbar[0]/btn[0]").press
-session.findById("wnd[1]/tbar[0]/btn[0]").press
-
-Application.Wait Now + TimeValue("0:00:05")
+    .findById("wnd[0]/usr/chkCB_CLSD").Selected = True
+    .findById("wnd[0]/usr/chkCB_HIGH").Selected = True
     
+'add variant-----------------------------------------------------
+    .findById("wnd[0]/usr/ctxtP_VARI").text = "/AMSEDINOESD"
+    .findById("wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH").press
+    .findById("wnd[1]/tbar[0]/btn[24]").press
+    .findById("wnd[1]/tbar[0]/btn[8]").press
+    .findById("wnd[0]").sendVKey 8
+'Export E2E--------------------------------------------------------
+    .findById("wnd[0]/tbar[1]/btn[43]").press
+    .findById("wnd[1]/usr/ctxtDY_FILENAME").text = RawE2EFileName
+    .findById("wnd[1]/usr/ctxtDY_PATH").caretPosition = 41
+    .findById("wnd[1]").sendVKey 4
+    .findById("wnd[2]/usr/ctxtDY_PATH").text = NoESDFolder
+    .findById("wnd[2]/usr/ctxtDY_PATH").caretPosition = 74
+    .findById("wnd[2]/tbar[0]/btn[0]").press
+    .findById("wnd[1]/tbar[0]/btn[0]").press
+End With
 End Sub
 Private Sub SpringCleanRawE2E()
+Dim E2ERowsTotal As Long
 
-Workbooks.Open (RawPBIFilePath)
+
+
 Set RawE2EBook = Workbooks.Open(RawE2EFilePath)
 Set RawE2ESheet = RawE2EBook.Sheets(1)
 
-
+With RawE2ESheet
 
 'converts the column from text to number and removed dupes-------------------------------------------
-RawE2ESheet.Range("A:A").TextToColumns , xlDelimited, xlTextQualifierNone, , True
-RawE2ESheet.Range("B:B").TextToColumns , xlDelimited, xlTextQualifierNone, , True
-Application.Wait Now + TimeValue("0:00:01")
-RawE2ESheet.Range("C:C").TextToColumns , xlDelimited, xlTextQualifierNone, , True
-RawE2ESheet.Range("D:D").TextToColumns , xlDelimited, xlTextQualifierNone, , True
-Application.Wait Now + TimeValue("0:00:01")
-RawE2ESheet.Range("E:E").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+    .Range("A:A").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+    .Range("B:B").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+    Application.Wait Now + TimeValue("0:00:01")
+    .Range("C:C").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+    .Range("D:D").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+    Application.Wait Now + TimeValue("0:00:01")
+    .Range("E:E").TextToColumns , xlDelimited, xlTextQualifierNone, , True
 
 'not sure if this is how it should syntax to select columns 1 to 5 to removed duplicates
-RawE2ESheet.Range("A:N").RemoveDuplicates columns:=Array(1, 2, 3, 4, 5), Header:=xlYes
+    .Range("A:N").RemoveDuplicates Columns:=Array(1, 2, 3, 4, 5), Header:=xlYes
+
+'organize & Select the rows to remove intangibles and count them-------------------------------------
+    .Activate
+    .Range("A1").Select
+    .Range(Selection, Selection.End(xlDown)).Select
+    E2ERowsTotal = Selection.Rows.Count
+    .Range("A:N").Sort key1:=.Range("G:G"), order1:=xlDescending, Header:=xlYes
+
+'remove intangibles
+    .AutoFilterMode = False
+    .Range("G1:G" & E2ERowsTotal).AutoFilter Field:=1, Criteria1:="X"
+    .AutoFilter.Range.Offset(1).SpecialCells(xlCellTypeVisible).EntireRow.Delete
+    .AutoFilterMode = False
 
 'sorts to better see the raw data--------------------------------------------------------------------
-RawE2ESheet.Range("A:N").Sort key1:=RawE2ESheet.Range("I:I"), order1:=xlAscending, Header:=xlYes
-RawE2ESheet.Range("A:N").Sort key1:=RawE2ESheet.Range("J:J"), order1:=xlAscending, Header:=xlYes
+    .Range("A:N").Sort key1:=.Range("I:I"), order1:=xlAscending, Header:=xlYes
+    .Range("A:N").Sort key1:=.Range("J:J"), order1:=xlAscending, Header:=xlYes
+End With
 
 End Sub
 Private Sub CompareData()
 
-Dim LookUpIndex As Integer, ArrayIndex As Integer
-Dim cell As Range, LoadRange As Range, LoadCells As Range, LookUpArray As Variant
+Dim LookUpIndex As Integer, ArrayIndex As Integer, ColumnIndex As Integer, MADFlag As Boolean, Found As Boolean
+Dim LoadRange As Range, LoadCells As Range, LookUpArray As Variant, LookUpFactory As Variant
 Dim ccstoRange() As Variant, poRange() As Variant, icpoRange() As Variant, sostoRange() As Variant
-Dim SapList As Variant, SupplierList As Variant, dict As Object, value As Variant, i As Long, RowPasting As Long, E2ERowsTotal As Long
-
-
+Dim i As Long, RowPasting As Long, E2ERowsTotal As Long, RowIndex As Integer, cell As Variant
 
 'Select the rows and count them-------------------------------------
     RawE2ESheet.Activate
@@ -186,24 +202,24 @@ Dim SapList As Variant, SupplierList As Variant, dict As Object, value As Varian
     RawE2ESheet.Range(Selection, Selection.End(xlDown)).Select
     E2ERowsTotal = Selection.Rows.Count
 
-
 '-------------------------------------------------------------------------------------------------------------------
-LookUpArray = Application.Transpose(RawPBIRange.value)
-    
+LookUpArray = Application.Transpose(RawPBI_PO.Value)
+LookUpFactory = Application.Transpose(RawPBIFactory.Value)
 '-------------------------------------------------------------------------------------------------------------------
     Set LoadRange = RawE2ESheet.Range("B1:B" & E2ERowsTotal)
     On Error Resume Next
     Set LoadCells = LoadRange.SpecialCells(xlCellTypeConstants)
     On Error GoTo 0
     
-    ' Check if LoadCells is not Nothing
+' Check if LoadCells is not Nothing
     If Not LoadCells Is Nothing Then
         ReDim poRange(1 To LoadCells.Count, 1 To 2)
-        ' Loop through each cell with a value and store its row number and value
+        
+' Loop through each cell with a value and store its row number and value
         i = 1
         For Each cell In LoadCells
             
-            poRange(i, 1) = cell.value
+            poRange(i, 1) = cell.Value
             poRange(i, 2) = cell.Row
             i = i + 1
         Next cell
@@ -212,22 +228,23 @@ LookUpArray = Application.Transpose(RawPBIRange.value)
 Set cell = Nothing
 Set LoadCells = Nothing
 Set LoadRange = Nothing
+
 '-------------------------------------------------------------------------------------------------------------------
 Set LoadRange = RawE2ESheet.Range("C1:C" & E2ERowsTotal)
 
-    ' Filter out only the cells that have values
+' Filter out only the cells that have values
     On Error Resume Next
     Set LoadCells = LoadRange.SpecialCells(xlCellTypeConstants)
     On Error GoTo 0
     
-    ' Check if LoadCells is not Nothing
+' Check if LoadCells is not Nothing
     If Not LoadCells Is Nothing Then
         ReDim ccstoRange(1 To LoadCells.Count, 1 To 2)
         
-        ' Loop through each cell with a value and store its row number and value
+' Loop through each cell with a value and store its row number and value
         i = 1
         For Each cell In LoadCells
-            ccstoRange(i, 1) = cell.value
+            ccstoRange(i, 1) = cell.Value
             ccstoRange(i, 2) = cell.Row
             i = i + 1
         Next cell
@@ -236,23 +253,23 @@ Set LoadRange = RawE2ESheet.Range("C1:C" & E2ERowsTotal)
 Set cell = Nothing
 Set LoadCells = Nothing
 Set LoadRange = Nothing
-        
+
 '-------------------------------------------------------------------------------------------------------------------
 Set LoadRange = RawE2ESheet.Range("D1:D" & E2ERowsTotal)
 
-    ' Filter out only the cells that have values
+' Filter out only the cells that have values
     On Error Resume Next
     Set LoadCells = LoadRange.SpecialCells(xlCellTypeConstants)
     On Error GoTo 0
     
-    ' Check if LoadCells is not Nothing
+' Check if LoadCells is not Nothing
     If Not LoadCells Is Nothing Then
         ReDim icpoRange(1 To LoadCells.Count, 1 To 2)
         
-        ' Loop through each cell with a value and store its row number and value
+' Loop through each cell with a value and store its row number and value
         i = 1
         For Each cell In LoadCells
-            icpoRange(i, 1) = cell.value
+            icpoRange(i, 1) = cell.Value
             icpoRange(i, 2) = cell.Row
             i = i + 1
         Next cell
@@ -261,22 +278,23 @@ Set LoadRange = RawE2ESheet.Range("D1:D" & E2ERowsTotal)
 Set cell = Nothing
 Set LoadCells = Nothing
 Set LoadRange = Nothing
+
 '-------------------------------------------------------------------------------------------------------------------
 Set LoadRange = RawE2ESheet.Range("E1:E" & E2ERowsTotal)
 
-    ' Filter out only the cells that have values
+' Filter out only the cells that have values
     On Error Resume Next
     Set LoadCells = LoadRange.SpecialCells(xlCellTypeConstants)
     On Error GoTo 0
     
-    ' Check if LoadCells is not Nothing
+' Check if LoadCells is not Nothing
     If Not LoadCells Is Nothing Then
         ReDim sostoRange(1 To LoadCells.Count, 1 To 2)
         
-        ' Loop through each cell with a value and store its row number and value
+' Loop through each cell with a value and store its row number and value
         i = 1
         For Each cell In LoadCells
-            sostoRange(i, 1) = cell.value
+            sostoRange(i, 1) = cell.Value
             sostoRange(i, 2) = cell.Row
             i = i + 1
         Next cell
@@ -290,109 +308,83 @@ Set LoadRange = Nothing
     
 ' Loop through the values in the LookupArray------------------------------------------------------------------------
     For LookUpIndex = LBound(LookUpArray) To UBound(LookUpArray)
-' Loop through poRange----------------------------------------------------------------------------------------------
+        If LookUpFactory(LookUpIndex) = "Aruba" Or LookUpFactory(LookUpIndex) = "SG CC" Then MADFlag = True
+        
         For ArrayIndex = LBound(poRange, 1) To UBound(poRange, 1)
             If LookUpArray(LookUpIndex) = poRange(ArrayIndex, 1) Then
-                ' Value from LookupArray found in poRange
-                If RawE2ESheet.Range("J" & poRange(ArrayIndex, 2)) <> "" Then
-
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("J1") & " Of " & RawE2ESheet.Range("J" & poRange(ArrayIndex, 2))
-                    
-                ElseIf RawE2ESheet.Range("I" & poRange(ArrayIndex, 2)) <> "" Then
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("I1") & " Of " & RawE2ESheet.Range("I" & poRange(ArrayIndex, 2))
-                
-                Else
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has No ESD"
-                    RawPBISheet.Range("A" & Count & ":K" & Count).Interior.ColorIndex = 27
-                    
-                
-                End If
-                
-                Count = Count + 1
-                
-                GoTo Skips
+                Found = True
+                RowIndex = poRange(ArrayIndex, 2)
+                GoTo Step2
             End If
         Next ArrayIndex
         
-' Loop through ccstoRange--------------------------------------------------------------------------------------------
         For ArrayIndex = LBound(ccstoRange, 1) To UBound(ccstoRange, 1)
             If LookUpArray(LookUpIndex) = ccstoRange(ArrayIndex, 1) Then
-                ' Value from LookupArray found in ccstoRange
-
-                If RawE2ESheet.Range("J" & ccstoRange(ArrayIndex, 2)) <> "" Then
-
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("J1") & " Of " & RawE2ESheet.Range("J" & ccstoRange(ArrayIndex, 2))
-                    
-                ElseIf RawE2ESheet.Range("I" & ccstoRange(ArrayIndex, 2)) <> "" Then
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("I1") & " Of " & RawE2ESheet.Range("I" & ccstoRange(ArrayIndex, 2))
-                
-                Else
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has No ESD"
-                    RawPBISheet.Range("A" & Count & ":K" & Count).Interior.ColorIndex = 27
-                
-                End If
-                
-                Count = Count + 1
-                
-                GoTo Skips
+                Found = True
+                RowIndex = ccstoRange(ArrayIndex, 2)
+                GoTo Step2
             End If
         Next ArrayIndex
         
-' Loop through icpoRange----------------------------------------------------------------------------------------------
-        For ArrayIndex = LBound(icpoRange, 1) To UBound(icpoRange, 1)
-            If LookUpArray(LookUpIndex) = icpoRange(ArrayIndex, 1) Then
-                ' Value from LookupArray found in icpoRange
-                If RawE2ESheet.Range("J" & icpoRange(ArrayIndex, 2)) <> "" Then
-
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("J1") & " Of " & RawE2ESheet.Range("J" & icpoRange(ArrayIndex, 2))
-                    
-                ElseIf RawE2ESheet.Range("I" & icpoRange(ArrayIndex, 2)) <> "" Then
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("I1") & " Of " & RawE2ESheet.Range("I" & icpoRange(ArrayIndex, 2))
-                
-                Else
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has No ESD"
-                    RawPBISheet.Range("A" & Count & ":K" & Count).Interior.ColorIndex = 27
-                
-                End If
-                
-                Count = Count + 1
-                GoTo Skips
-            End If
-        Next ArrayIndex
-        
-' Loop through sostoRange---------------------------------------------------------------------------------------------
         For ArrayIndex = LBound(sostoRange, 1) To UBound(sostoRange, 1)
             If LookUpArray(LookUpIndex) = sostoRange(ArrayIndex, 1) Then
-                ' Value from LookupArray found in sostoRange
-                If RawE2ESheet.Range("J" & sostoRange(ArrayIndex, 2)) <> "" Then
-
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("J1") & " Of " & RawE2ESheet.Range("J" & sostoRange(ArrayIndex, 2))
-                    
-                ElseIf RawE2ESheet.Range("I" & sostoRange(ArrayIndex, 2)) <> "" Then
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has A " & RawE2ESheet.Range("I1") & " Of " & RawE2ESheet.Range("I" & sostoRange(ArrayIndex, 2))
-                
-                Else
-                
-                    RawPBISheet.Range("K" & Count) = RawPBISheet.Range("D" & Count) & " Has No ESD"
-                    RawPBISheet.Range("A" & Count & ":K" & Count).Interior.ColorIndex = 27
-                
-                End If
-                
-                Count = Count + 1
-                GoTo Skips
+                Found = True
+                RowIndex = sostoRange(ArrayIndex, 2)
+                GoTo Step2
             End If
         Next ArrayIndex
         
-Skips: ' skips the other loops after finding the Order
-    Next LookUpIndex
-   
-'save and close e2e book
+        For ArrayIndex = LBound(icpoRange, 1) To UBound(icpoRange, 1)
+            If LookUpArray(LookUpIndex) = icpoRange(ArrayIndex, 1) Then
+                Found = True
+                RowIndex = icpoRange(ArrayIndex, 2)
+                GoTo Step2
+            End If
+        Next ArrayIndex
+        
+Step2: ' after finding the order on the E2E lookup if it has a Date if not put "no date found"
+        If Found And Not MADFlag Then
+            Found = False
+            If RawE2ESheet.Cells(RowIndex, 9) <> "" Then
+                RawPBISheet.Range("L" & Count) = LookUpFactory(LookUpIndex) & " Has A " & RawE2ESheet.Cells(1, 9) & " Of " & RawE2ESheet.Cells(RowIndex, 9)
+                Count = Count + 1
+                GoTo Skips
+                
+            ElseIf RawE2ESheet.Cells(RowIndex, 10) <> "" Then
+                RawPBISheet.Range("L" & Count) = LookUpFactory(LookUpIndex) & " Has A " & RawE2ESheet.Cells(1, 10) & " Of " & RawE2ESheet.Cells(RowIndex, 10)
+                Count = Count + 1
+                GoTo Skips
+            Else
+                RawPBISheet.Range("L" & Count) = LookUpFactory(LookUpIndex) & " Has No ESD, Sent Email to Supplier"
+                RawPBISheet.Range("A" & Count & ":L" & Count).Interior.ColorIndex = 27
+                Count = Count + 1
+                GoTo Skips
+            End If
 
-    End Sub
+        ElseIf Found And MADFlag Then
+        
+            Found = False
+            If RawE2ESheet.Cells(RowIndex, 11) <> "" Then
+                RawPBISheet.Range("L" & Count) = LookUpFactory(LookUpIndex) & " Has A " & RawE2ESheet.Cells(1, 11) & " Of " & RawE2ESheet.Cells(RowIndex, 11)
+                Count = Count + 1
+                GoTo Skips
+            Else
+                RawPBISheet.Range("L" & Count) = LookUpFactory(LookUpIndex) & " Has No ESD, Sent Email to Supplier"
+                RawPBISheet.Range("A" & Count & ":L" & Count).Interior.ColorIndex = 27
+                Count = Count + 1
+                GoTo Skips
+            End If
+                
+        Else
+            RawPBISheet.Range("L" & Count) = "The PO Wasn't Found in the Export CHECK MANUALLY PO might be deleted"
+            RawPBISheet.Range("A" & Count & ":L" & Count).Interior.ColorIndex = 35
+            Count = Count + 1
+        
+        End If
+   
+        
+Skips:
+    Next LookUpIndex
+    RawE2EBook.Close savechanges:=True
+
+End Sub
