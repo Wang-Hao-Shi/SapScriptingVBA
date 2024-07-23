@@ -1,42 +1,45 @@
-'   version: 2024-03
-'   Created by WHS
-Option Explicit
-'Declare Variables----------------------------------------------------------------------------------------
-Public NoESDFolder As String, NoESDName As String, XlMacroFolder As String, XlMacroName As String, VL06Folder As String, XlMainSheet As Worksheet
-Public VL06Name As String, ShipReportFolder As String, Today As String, session, XlMacroBook As Workbook, SapGui
-
 'to send the 2 variables on the button is like this, include all quotation marks: 'Principal "GSSO","DCP"'
+Option Explicit
+Private Utilities As New ZenUtils
+Public XlMacroFolder As String, XlMacroName As String, Today As String, XlMainSheet As Worksheet, XlMacroBook As Workbook, SetUpSheet As Worksheet
+Public SapGui, Session
+'----------------------------
+'   Version: 2024-06        -
+'   Created by Jose Javier  -
+'   jjcb@hpe.com            -
+'----------------------------
 
-Public Sub Principal(SubName As String, Optional SystemSelection = "")
-'Declare Classes
-Dim Utilities As New Utils, StartUp As New StartUp
 
-    
-'Set Important  Variables For Modules To Use-------------------------------------------------
+Public Sub Principal(Procedure As String, Optional SystemSelection = ""): On Error GoTo Handler
+Dim StartUp As New StartUp
+Dim Duration As Single, minutes As String, seconds As String, milliseconds As String
+
+
     Utilities.SetVariables
-    
-'if SystemSelection Empty Select System------------------------------------------------------
-    If SystemSelection = "" Then SystemSelection = 'insert inputbox here to get the system
-
-'Start Sap-----------------------------------------------------------------------------------
-    StartUp.ConnectSession (SystemSelection)
-    StartUp.VerifiyWindow
-    session.findById("wnd[0]").iconify
-    
-'Turn Off Functionalities To Save Some Resources---------------------------------------------
     Utilities.TurnOffFunctionality
+        
+    If SystemSelection = "" Then SystemSelection = System_Selection.Choose_Option()
+    StartUp.ConnectSession (SystemSelection)
+    StartUp.VerifyWindow
+    Session.findById("wnd[0]").iconify
     
-'Call The Required Program With The SubName Variable-----------------------------------------
-   Application.Run SubName
+    Duration = Timer
+    Application.Run Procedure
+    Duration = Timer - Duration
     
-'close window--------------------------------------------------------------------------------
+    minutes = Format(Int(Duration / 60), "00")
+    seconds = Format(Int(Duration Mod 60), "00")
+    milliseconds = Format(Int((Duration - Int(Duration)) * 1000), "000")
+    
     Utilities.CloseSAP
-    
-'Turn On Functionalities---------------------------------------------------------------------
     Utilities.TurnOnFunctionality
-    
-'message the program is done-----------------------------------------------------------------
-    'activate the excel here or else the msgbox wont popup until excel is in focus
-    MsgBox "The Program Is Done", vbInformation
+    Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
+    MsgBox "Program has completed successfully!" & vbNewLine & vbNewLine & "Time Spent: " & minutes & ":" & seconds & "." & milliseconds, vbInformation, "The Program Has Finished!"
 
+Exit Sub
+Handler: Utilities.ErrorHandler
+End Sub
+
+Public Sub EnableScreen()
+Utilities.TurnOnFunctionality
 End Sub
