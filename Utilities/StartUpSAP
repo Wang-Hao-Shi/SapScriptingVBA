@@ -1,71 +1,95 @@
 Option Explicit
+Private Response As Integer, Utilities As New ZenUtils
 '----------------------------
 '   Version: 2024-06        -
 '   Created by Jose Javier  -
 '   jjcb@hpe.com            -
 '----------------------------
+Public Sub ConnectSession(SystemSelection As String): On Error GoTo Handler
+Dim LogIn As New LogIn
+Dim sapsessions, tester, connection, WasFound As Boolean
 
-Public Sub ErrorHandler()
-    Workbooks.Open(XlMacroFolder & "\" & XlMacroName).Activate
-    MsgBox Err.Description, vbCritical, Err.Number & " " & Err.Source
-    End
-End Sub
-Public Sub SetVariables(): On Error GoTo Handler
-    XlMacroName = ActiveWorkbook.Name
-    Set XlMacroBook = Workbooks(XlMacroName)
-    Set XlMainSheet = XlMacroBook.Sheets("Main")
-    Set SetUpSheet = XlMacroBook.Sheets("SetUp")
-    XlMacroFolder = SetUpSheet.Range("B7").Value
-    Today = " " & Format(Now(), "yyyy-mm-dd") & " (" & Format(Now(), "hh-mm AM/PM") & ")"
-'--------------------------------------------------------------
-    
-Exit Sub
-Handler: ErrorHandler
-End Sub
-Public Sub TurnOffFunctionality(): On Error GoTo Handler
-    Application.Calculation = xlCalculationManual
-    Application.DisplayStatusBar = False
-    Application.EnableEvents = False
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-Exit Sub
-Handler: ErrorHandler
-End Sub
-Public Sub TurnOnFunctionality(): On Error GoTo Handler
-    Application.Calculation = xlCalculationAutomatic
-    Application.DisplayStatusBar = True
-    Application.EnableEvents = True
-    Application.ScreenUpdating = True
-    Application.DisplayAlerts = True
-Exit Sub
-Handler: ErrorHandler
-End Sub
-Public Sub CloseSAP(): On Error GoTo Handler
-    Session.findById("wnd[0]/tbar[0]/okcd").text = "/N"
-    Session.findById("wnd[0]").sendVKey 0
-    Session.findById("wnd[0]").Close
-    Session.findById("wnd[1]/usr/btnSPOP-OPTION2").press
-Exit Sub
-Handler:
-If Err = -2147417848 Then
-    Resume Next
-Else
-    ErrorHandler
+    Utilities.OpenSapEXE
+    Set SapGui = GetObject("SAPGUI")
+    Set Session = SapGui.GetScriptingEngine()
+
+If Session.Children.count = 0 Then
+    LogIn.Connect SystemSelection
+    Set SapGui = GetObject("SAPGUI")
+    Set Session = SapGui.GetScriptingEngine()
+    Set connection = Session.Children(0)
+    Set Session = connection.Children(0)
+    Exit Sub
 End If
-End Sub
-Public Sub OpenSapEXE(): On Error GoTo Handler
-Dim WMIService As Variant, Processes As Variant
 
-    Set WMIService = GetObject("winmgmts:")
-    Set Processes = WMIService.ExecQuery("Select * from Win32_Process where name='saplogon.exe'")
-    If Processes.count Then
+If Session.Children.count = 1 Then
+    Set connection = Session.Children(0)
+    Set Session = connection.Children(0)
+    If SystemSelection <> Session.info.SystemName Then
+        MsgBox "You Have " & Session.info.SystemName & " open but this transaction requires " & SystemSelection & vbNewLine & " Now Connecting to the correct system", vbExclamation, "Connecting to the correct system"
+        LogIn.Connect SystemSelection
         Exit Sub
     Else
-        Shell "C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe", vbNormalFocus
-        Do Until CreateObject("WScript.Shell").AppActivate("SAP Logon ")
-        Application.Wait Now + TimeValue("0:00:01")
-        Loop
+        If Session.info.Transaction = "S000" Then
+            Session.findById("wnd[0]").Close
+            LogIn.Connect SystemSelection
+        End If
     End If
+    Exit Sub
+End If
+
+If Session.Children.count > 1 Then
+    For Response = 1 To Session.Children.count
+        Set tester = Session.Children(CInt(Response - 1))
+        If SystemSelection = tester.Description Then
+            Set Session = Session.Children(Response - 1)
+            Set Session = Session.Children(0)
+            If Session.info.Transaction = "S000" Then
+                Session.findById("wnd[0]").Close
+                LogIn.Connect SystemSelection
+            End If
+            WasFound = True
+            Exit Sub
+        End If
+    Next Response
+    If Not WasFound Then LogIn.Connect SystemSelection
+End If
 Exit Sub
-Handler: ErrorHandler
+Handler: Utilities.ErrorHandler
 End Sub
+Public Sub VerifyWindow(): On Error GoTo Handler
+Dim count As Integer, WasFound As Boolean
+Dim tester, sapsessions
+
+If Session.info.Transaction <> "SESSION_MANAGER" Then
+If Response = 0 Then Response = 1
+LookForSESSION_MANAGER:
+    Set SapGui = GetObject("SAPGUI")
+    Set Session = SapGui.GetScriptingEngine()
+    Set sapsessions = Session.Children(Response - 1)
+
+        For count = 1 To sapsessions.Children.count
+            Set tester = sapsessions.Children(CInt(count - 1))
+                If tester.info.Transaction = "SESSION_MANAGER" Then
+                    WasFound = True
+                    Set Session = tester
+                    Exit Sub
+                End If
+        Next count
+
+    If Not WasFound Then
+        Set Session = Session.Children(Response - 1)
+        Set Session = Session.Children(0)
+        Application.Wait Now + TimeValue("0:00:01")
+        Session.CreateSession
+        GoTo LookForSESSION_MANAGER:
+    End If
+        Set Session = Session.Children(Response - 1)
+        Set Session = Session.Children(0)
+        Exit Sub
+End If
+
+Exit Sub
+Handler: Utilities.ErrorHandler
+End Sub
+
