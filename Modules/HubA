@@ -1,0 +1,191 @@
+'   version: 2024-06
+'   Created by Jose Javier
+'   jjcb@hpe.com
+Option Explicit
+Private RawData As Workbook, RawDataSheet As Worksheet, RawE2EBook As Workbook, RawE2ESheet As Worksheet
+Private RawE2EFilePath As String, RawE2EFileName As String, count As Integer, DataRowsTotal As Long, E2ERowsTotal As Long, RawPBIFileName As String
+Private Utilities As New ZenUtils
+
+Sub HubA_Main()
+Dim i As Integer, x As Integer
+    Set CodesDictionary = CreateObject("Scripting.Dictionary")
+    
+    For i = 2 To SetUpSheet.Cells(SetUpSheet.Rows.count, "E").End(xlUp).Row
+      CodesDictionary(SetUpSheet.Range("E" & i).Value) = SetUpSheet.Range("F" & i).Value
+    Next i
+    
+    x = SetUpSheet.Cells(SetUpSheet.Rows.count, "I").End(xlUp).Row
+    Statuses = Application.Transpose(SetUpSheet.Range("I2:I" & x).Value)
+    RawE2EFileName = "E2E Raw Data" & Today & ".xlsx"
+    RawE2EFilePath = HUBFolder & "\" & RawE2EFileName
+        RenamePWBIExport
+        ObtainTheOrders
+        Export_E2EDB
+        SpringCleanRawE2E
+        CompareData
+    XlMainSheet.Range("B19").Value = "Done!  " & Today
+
+End Sub
+Private Sub RenamePWBIExport(): On Error GoTo Handler
+'Declare Variables
+Dim PBINewName As String, MsgBoxAnswer As Integer
+
+'rename the "data" file in the folder and put "PBI Raw Data " with timestamp
+    PBINewName = "HUB" & Format(Date, "mm/dd/yyyy") & ".xlsx"
+TryAgain:
+    Name HUBFolder & "\HUB.xlsx" As HUBFolder & "\" & PBINewName
+    RawPBIFileName = PBINewName
+Exit Sub
+Handler:
+    If Err <> 0 Then
+        MsgBoxAnswer = MsgBox("Before Hitting [OK]" & vbNewLine & vbNewLine & "Please put the export from power bi on the respective folder and name it as 'HUB.xlsx'" & vbNewLine & vbNewLine & "if you have the file in the opened close it", vbOKCancel + vbCritical, "Error 404")
+        If MsgBoxAnswer = 2 Then End
+        GoTo TryAgain
+    Else
+        Utilities.ErrorHandler
+    End If
+End Sub
+Private Sub ObtainTheOrders()
+
+    Set RawData = Workbooks.Open(HUBFolder & "\" & RawPBIFileName)
+
+
+    Set RawDataSheet = RawData.Sheets(1)
+    With RawDataSheet
+        .Range("A:S").RemoveDuplicates Columns:=1, Header:=xlYes
+        .Range("A:A").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+        .Activate
+        .Range("A2").Select
+        .Range(Selection, Selection.End(xlDown)).Select
+        DataRowsTotal = Selection.Rows.count
+        .Range("A2:A" & DataRowsTotal).Copy
+    End With
+
+End Sub
+Private Sub Export_E2EDB()
+    With Session
+        .findById("wnd[0]").iconify
+        .findById("wnd[0]").maximize
+        .StartTransaction "ZE2EDB_LITE"
+'set the checkmarks on closed and higher level items only----------------
+        .findById("wnd[0]/usr/chkCB_CLSD").Selected = True
+        .findById("wnd[0]/usr/chkCB_HIGH").Selected = True
+'add variant-------------------------------------------------------------
+        .findById("wnd[0]/usr/ctxtP_VARI").text = "/HUBDATES"
+        .findById("wnd[0]/usr/btn%_S_VBELN_%_APP_%-VALU_PUSH").press
+        .findById("wnd[1]/tbar[0]/btn[24]").press
+        .findById("wnd[1]/tbar[0]/btn[8]").press
+        .findById("wnd[0]").sendVKey 8
+'Export Data-------------------------------------------------------------
+        .findById("wnd[0]/tbar[1]/btn[43]").press
+        .findById("wnd[1]/usr/ctxtDY_FILENAME").text = RawE2EFileName
+        .findById("wnd[1]/usr/ctxtDY_PATH").caretPosition = 41
+        .findById("wnd[1]").sendVKey 4
+        .findById("wnd[2]/usr/ctxtDY_PATH").text = HUBFolder
+        .findById("wnd[2]/usr/ctxtDY_PATH").caretPosition = 74
+        .findById("wnd[2]/tbar[0]/btn[0]").press
+        .findById("wnd[1]/tbar[0]/btn[0]").press
+    End With
+End Sub
+Private Sub SpringCleanRawE2E()
+Dim RenameThem() As String, i As Integer
+
+
+    Application.Wait Now + TimeValue("0:00:03")
+    Set RawE2EBook = Workbooks.Open(RawE2EFilePath)
+    Set RawE2ESheet = RawE2EBook.Sheets(1)
+
+    
+    With RawE2ESheet
+'converts the column from text to number and removed dupes-------------------------------------------
+        .Range("A:A").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+        .Range("B:B").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+        .Range("C:C").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+        .Range("D:D").TextToColumns , xlDelimited, xlTextQualifierNone, , True
+        .Range("A:J").RemoveDuplicates Columns:=Array(1, 2, 3, 4, 7), Header:=xlYes
+
+'organize & Select the rows to remove intangibles and count them-------------------------------------
+
+        E2ERowsTotal = .Cells(.Rows.count, "A").End(xlUp).Row
+        .Range("A:J").Sort key1:=.Range("J:J"), order1:=xlDescending, Header:=xlYes
+
+'remove intangibles----------------------------------------------------------------------------------
+        .AutoFilterMode = False
+        .Range("J2:J" & E2ERowsTotal).AutoFilter Field:=1, Criteria1:="X"
+        .AutoFilter.Range.SpecialCells(xlCellTypeVisible).EntireRow.Delete
+        .Range("J:J").Delete
+
+
+
+        .Range("A:M").Sort key1:=.Range("E:E"), order1:=xlAscending, Header:=xlYes
+        E2ERowsTotal = .Cells(.Rows.count, "A").End(xlUp).Row
+        ReDim RenameThem(2 To E2ERowsTotal)
+
+
+        For i = 2 To E2ERowsTotal
+            RenameThem(i) = .Range("E" & i).Value
+        Next i
+        
+        For i = 2 To E2ERowsTotal
+             If CodesDictionary.exists(RenameThem(i)) Then
+                RenameThem(i) = CodesDictionary(RenameThem(i))
+            End If
+        Next i
+        
+        For i = 2 To E2ERowsTotal
+            .Range("E" & i).Value = RenameThem(i)
+        Next i
+
+'sorts By SOs-------------------------------------------------------------------------------------
+        .Range("A:M").Sort key1:=.Range("A:A"), order1:=xlAscending, Header:=xlYes
+    End With
+    
+End Sub
+Private Sub CompareData()
+Dim CurrentOrder As Variant, i As Long, FinalDetails As Object, CurrentRank As Integer, NewRank As Integer
+
+Set FinalDetails = CreateObject("Scripting.Dictionary")
+
+Dim E2EDetails() As E2EDetails
+ReDim E2EDetails(2 To E2ERowsTotal)
+
+'---------------------------------------------------------------------
+    For i = 2 To E2ERowsTotal
+        With E2EDetails(i)
+            .Order = RawE2ESheet.Range("A" & i).Value
+            .Factory = RawE2ESheet.Range("E" & i).Value
+            .Status = RawE2ESheet.Range("F" & i).Value
+            .AB = RawE2ESheet.Range("G" & i).Value
+            .PGID = RawE2ESheet.Range("H" & i).Value
+        End With
+    Next i
+'---------------------------------------------------------------------
+     For i = 2 To E2ERowsTotal
+        If E2EDetails(i).Order <> CurrentOrder Then
+            CurrentOrder = E2EDetails(i).Order
+            FinalDetails(CurrentOrder) = Array("none", "canc", 0)
+        End If
+
+        CurrentRank = Application.Match(FinalDetails(CurrentOrder)(1), Statuses, False)
+        NewRank = Application.Match(E2EDetails(i).Status, Statuses, False)
+
+        If E2EDetails(i).Factory = "FMX" Or E2EDetails(i).Factory = "IMX" Then
+            If (E2EDetails(i).AB > FinalDetails(CurrentOrder)(2) And NewRank <= CurrentRank) Or NewRank < CurrentRank Then
+                FinalDetails(CurrentOrder) = Array(E2EDetails(i).Factory, E2EDetails(i).Status, E2EDetails(i).AB)
+            End If
+        Else
+            If (E2EDetails(i).PGID > FinalDetails(CurrentOrder)(2) And NewRank <= CurrentRank) Or NewRank < CurrentRank Then
+                FinalDetails(CurrentOrder) = Array(E2EDetails(i).Factory, E2EDetails(i).Status, E2EDetails(i).PGID)
+            End If
+        End If
+    Next i
+'---------------------------------------------------------------------
+    For i = 2 To DataRowsTotal
+        RawDataSheet.Range("M" & i).Value = FinalDetails(RawDataSheet.Range("A" & i).Value)(0) & " " & FinalDetails(RawDataSheet.Range("A" & i).Value)(1)
+        RawDataSheet.Range("O" & i).Value = FinalDetails(RawDataSheet.Range("A" & i).Value)(2)
+    Next i
+
+    RawData.Sheets(1).Name = "Export"
+    RawData.Save
+    
+End Sub
