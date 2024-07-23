@@ -1,21 +1,18 @@
 '   version: 2024-04
-'   Created by WHS
+'   Created by Jose Javier
+'   jjcb@hpe.com
 Option Explicit
 Private SID_Column As Integer, SO_Column As Integer, PO_Column As Integer, SAPSID_Range As Range
 Private SupplierSID_Range As Range, SO_Column_Range As Range, PO_Column_Range As Range
 Private TotalCells As Integer, ShipReportExportName As String
 Private SupplierBookName As String, SupplierBook As Workbook, SupplierSheet As Worksheet, SapExportBook As Workbook, SapExportSheet As Worksheet, ShipReportMacroSheet As Worksheet
 
-
 Sub MainShipReport()
-
 
     ShipReportExportName = "ShipReportExport " & Today & ".xls"
     Set ShipReportMacroSheet = XlMacroBook.Sheets("ShipmentReport")
-    
     ShipReportMacroSheet.Range("A2:D99999").ClearContents
-    
-    
+
     OpenSupplierWorkbook
     SelectSheet
     CleanUpSupplierBook
@@ -26,7 +23,6 @@ Sub MainShipReport()
 
 End Sub
 
-'opens workbook from a list displaying all the available workbooks-------------------------------------
 Private Sub OpenSupplierWorkbook()
 Dim FileSystemObject As Object, file As Object, SelectWorkbook As Integer, WorkbookList As String, WorkbookNames() As String
 Dim WorkbookIndex As Integer
@@ -49,20 +45,18 @@ Dim WorkbookIndex As Integer
         Next file
         
 ' Display the list of workbooks with index numbers---------------------------------------------------------------------
-If WorkbookList = "" Then
-    MsgBox "please ensure that you have the workbooks on the folder" & vbNewLine & vbNewLine & ShipReportFolder, vbCritical, "Missing Excel Files"
-    End
-End If
+If WorkbookList = "" Then MsgBox "please ensure that you have the workbooks on the folder" & vbNewLine & vbNewLine & ShipReportFolder, vbCritical, "Missing Excel Files": End
+
 
 SelectBook:
-        SelectWorkbook = InputBox("Select a workbook to open by entering the corresponding number:" & vbNewLine & vbNewLine & WorkbookList)
+        SelectWorkbook = InputBox("Select a workbook to open by entering the corresponding number:" & vbNewLine & vbNewLine & WorkbookList, "Select Workbook", 1)
         
 ' Check if a valid index number is entered &  Open the selected workbook-----------------------------------------------------------------
         If IsNumeric(SelectWorkbook) And SelectWorkbook >= 1 And SelectWorkbook < WorkbookIndex Then
             Set SupplierBook = Workbooks.Open(ShipReportFolder & "\" & WorkbookNames(SelectWorkbook))
             SupplierBookName = WorkbookNames(SelectWorkbook)
         Else
-        MsgBox "Invalid! try again."
+        MsgBox "Invalid selection! try again.", vbExclamation, "Error"
         GoTo SelectBook
         End If
 
@@ -74,21 +68,21 @@ Private Sub SelectSheet()
     Dim i As Integer
     
 ' Concatenate sheet numbers and names if there is more than 1------------------------------------------
-If SupplierBook.Sheets.Count > 1 Then
-    For i = 1 To SupplierBook.Sheets.Count
+If SupplierBook.Sheets.count > 1 Then
+    For i = 1 To SupplierBook.Sheets.count
         SheetNames = SheetNames & i & ". " & SupplierBook.Sheets(i).Name & vbNewLine & vbNewLine
     Next i
     
 ' Prompt user to enter sheet number--------------------------------------------------------------------
 SelectSheet:
-    SheetNumber = Application.InputBox("Select a sheet by entering its number:" & vbNewLine & vbNewLine & SheetNames)
+    SheetNumber = InputBox("Select a sheet by entering its number:" & vbNewLine & vbNewLine & SheetNames, "Select Sheet", 2)
     
 ' Check if a valid sheet number was entered------------------------------------------------------------
-    If SheetNumber > 0 And SheetNumber <= SupplierBook.Sheets.Count Then
+    If IsNumeric(SheetNumber) And SheetNumber > 0 And SheetNumber <= SupplierBook.Sheets.count Then
         Set SupplierSheet = SupplierBook.Sheets(SheetNumber)
         SupplierSheet.Activate
     Else
-        MsgBox "Invalid sheet number."
+        MsgBox "Invalid selection! try again.", vbExclamation, "Error"
         GoTo SelectSheet
     End If
 Else
@@ -105,7 +99,7 @@ Dim currentColumn As Integer, columnHeading As String
     SupplierSheet.Activate
     
 ' Delete irrelevant columns--------------------------------------------------------------------
-        For currentColumn = SupplierSheet.UsedRange.columns.Count To 1 Step -1
+        For currentColumn = SupplierSheet.UsedRange.columns.count To 1 Step -1
             columnHeading = SupplierSheet.UsedRange.Cells(1, currentColumn).value
 
             Select Case UCase(columnHeading)
@@ -115,14 +109,9 @@ Dim currentColumn As Integer, columnHeading As String
                     SupplierSheet.columns(currentColumn).Delete
             End Select
         Next
-        
-
-      
-      
-
 
 ' Find the column # containing the ShipIDs--------------------------------------------------------------------------------------------------------------
-    For currentColumn = 1 To SupplierSheet.UsedRange.columns.Count
+    For currentColumn = 1 To SupplierSheet.UsedRange.columns.count
         columnHeading = SupplierSheet.Cells(1, currentColumn).value
         
         If UCase(columnHeading) = "SHIPMENT ID" Or UCase(columnHeading) = "SID" Or UCase(columnHeading) = "NIM" Or UCase(columnHeading) = "SHIP ID NO." Or UCase(columnHeading) = "SHIP ID NO" Or UCase(columnHeading) = "SHIP ID HPE" Then
@@ -131,7 +120,6 @@ Dim currentColumn As Integer, columnHeading As String
         End If
         
     Next currentColumn
-    
 
 'sorts, removes duplicates by the SID column & auto fits
     Range("A:AZ").RemoveDuplicates columns:=SID_Column, Header:=xlYes
@@ -140,57 +128,61 @@ Dim currentColumn As Integer, columnHeading As String
     
 'sets the headers range
     Get_Headers
-    Set SupplierSID_Range = SupplierSheet.Range(SupplierSheet.Cells(2, SID_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.Count, SID_Column).End(xlUp).Row, SID_Column))
+    Set SupplierSID_Range = SupplierSheet.Range(SupplierSheet.Cells(2, SID_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.count, SID_Column).End(xlUp).Row, SID_Column))
     
     
     SupplierSheet.Cells(2, SID_Column).Select
     SupplierSheet.Range(Selection, Selection.End(xlDown)).Select
-    TotalCells = Selection.Count
+    TotalCells = Selection.count
     Selection.Copy
-    
-    
 
 End Sub
 Private Sub ExportSapData()
-
 Dim SystemSelection, BottomTextBar As String
 Dim StartUp As New StartUp
 Dim Utilities As New ZenUtils
     
-
-    session.findById("wnd[0]").maximize
-    session.StartTransaction "SE16N"
+    With Session
+    .findById("wnd[0]").maximize
+    .StartTransaction "SE16N"
 
 'selects the table and adds the info-------------------------------------
-    session.findById("wnd[0]/usr/ctxtGD-TAB").text = "EKES"
-    session.findById("wnd[0]").sendVKey 0
-    session.findById("wnd[0]/usr/ctxtGD-VARIANT").text = "/SIDPO" 'variant i need to make one
-    session.findById("wnd[0]").sendVKey 0
+    .findById("wnd[0]/usr/ctxtGD-TAB").text = "EKES"
+    .findById("wnd[0]").sendVKey 0
+    .findById("wnd[0]/usr/ctxtGD-VARIANT").text = "/SIDPO" 'variant i need to make one
+    .findById("wnd[0]").sendVKey 0
 
-'open XBLNR to paste SIDs-------------------------------------------
-    session.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,15]").SetFocus
-    session.findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,15]").press
+'open XBLNR to paste SIDs------------------------------------------- need to scroll down because not all screens are the same size and it fails if its not showing
+    
+    .findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC").VerticalScrollbar.Position = 15
+    .findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,0]").SetFocus
+    .findById("wnd[0]/usr/tblSAPLSE16NSELFIELDS_TC/btnPUSH[4,0]").press
 
 
 'pastes from clipboard------------------------------------------------------
-    session.findById("wnd[1]/tbar[0]/btn[24]").press
-    session.findById("wnd[1]/tbar[0]/btn[8]").press
-    session.findById("wnd[0]/tbar[1]/btn[8]").press
+    .findById("wnd[1]/tbar[0]/btn[24]").press
+    .findById("wnd[1]/tbar[0]/btn[8]").press
+    .findById("wnd[0]/tbar[1]/btn[8]").press
 
 'check for results, if none, exits program------------------------------------
-    BottomTextBar = session.findById("wnd[0]/sbar/pane[0]").text
+    BottomTextBar = .findById("wnd[0]/sbar/pane[0]").text
         If BottomTextBar = "No values found" Then
             XlMainSheet.Range("C29").value = BottomTextBar & Today
             Exit Sub
         End If
         
 'export the data here
-    session.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").pressToolbarContextButton "&MB_EXPORT"
-    session.findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").selectContextMenuItem "&XXL"
-    session.findById("wnd[1]/usr/ctxtDY_PATH").text = ShipReportFolder
-    session.findById("wnd[1]/usr/ctxtDY_FILENAME").text = ShipReportExportName
-    session.findById("wnd[1]/usr/ctxtDY_FILENAME").caretPosition = 6
-    session.findById("wnd[1]/tbar[0]/btn[0]").press
+    .findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").pressToolbarContextButton "&MB_EXPORT"
+    .findById("wnd[0]/usr/cntlRESULT_LIST/shellcont/shell").selectContextMenuItem "&XXL"
+    .findById("wnd[1]/usr/ctxtDY_PATH").text = ShipReportFolder
+    
+    'here a different window pops up
+    
+    
+    .findById("wnd[1]/usr/ctxtDY_FILENAME").text = ShipReportExportName
+    .findById("wnd[1]/usr/ctxtDY_FILENAME").caretPosition = 6
+    .findById("wnd[1]/tbar[0]/btn[0]").press
+    End With
 
 End Sub
 Private Sub CleanUpSapExport()
@@ -223,29 +215,30 @@ Dim SapList As Variant, SupplierList As Variant, dict As Object, value As Varian
     
     For i = LBound(SupplierList) To UBound(SupplierList)
         If Not dict.Exists(SupplierList(i)) Then
-            ShipReportMacroSheet.Range("A" & RowPasting).value = SO_Column_Range(i, 1)
-            ShipReportMacroSheet.Range("B" & RowPasting).value = PO_Column_Range(i, 1)
-            ShipReportMacroSheet.Range("C" & RowPasting).value = SupplierSID_Range(i, 1)
-            ShipReportMacroSheet.Range("D" & RowPasting).value = "Missing Value From Sap Export"
+            With ShipReportMacroSheet
+            .Range("A" & RowPasting).value = SO_Column_Range(i, 1)
+            .Range("B" & RowPasting).value = PO_Column_Range(i, 1)
+            .Range("C" & RowPasting).value = SupplierSID_Range(i, 1)
+            .Range("D" & RowPasting).value = "Missing Value From Sap Export"
+            End With
             RowPasting = RowPasting + 1
         End If
     Next i
     
 'close workbooks
 Application.Wait Now + TimeValue("0:00:01")
-Workbooks(SupplierBookName).Close SaveChanges:=True
-Workbooks(ShipReportExportName).Close SaveChanges:=True
+Workbooks(SupplierBookName).Close savechanges:=True
+Workbooks(ShipReportExportName).Close savechanges:=True
 
 
 End Sub
-
 
 Sub Get_Headers()
 Dim currentColumn As Integer, columnHeading As String
    
     
 ' Find the column # containing the --------------------------------------------------------------------------------------------------------------
-    For currentColumn = 1 To SupplierSheet.UsedRange.columns.Count
+    For currentColumn = 1 To SupplierSheet.UsedRange.columns.count
         columnHeading = SupplierSheet.Cells(1, currentColumn).value
         
         If UCase(columnHeading) = "HP SO" Or UCase(columnHeading) = "HP SO#" Or UCase(columnHeading) = "CUST SO" Or UCase(columnHeading) = "HP SO NO" Then
@@ -256,13 +249,13 @@ Dim currentColumn As Integer, columnHeading As String
     Next currentColumn
 
     If SO_Column > 0 Then
-        Set SO_Column_Range = SupplierSheet.Range(SupplierSheet.Cells(2, SO_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.Count, SO_Column).End(xlUp).Row, SO_Column))
+        Set SO_Column_Range = SupplierSheet.Range(SupplierSheet.Cells(2, SO_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.count, SO_Column).End(xlUp).Row, SO_Column))
     Else
         MsgBox "Column with headers For Sales Order not found. check code for the strings"
     End If
     
 ' Find the column # containing the ShipIDs--------------------------------------------------------------------------------------------------------------
-    For currentColumn = 1 To SupplierSheet.UsedRange.columns.Count
+    For currentColumn = 1 To SupplierSheet.UsedRange.columns.count
         columnHeading = SupplierSheet.Cells(1, currentColumn).value
         
         If UCase(columnHeading) = "HP PO" Or UCase(columnHeading) = "PO#" Or UCase(columnHeading) = "PO NO" Then
@@ -273,7 +266,7 @@ Dim currentColumn As Integer, columnHeading As String
     Next currentColumn
 
     If PO_Column > 0 Then
-        Set PO_Column_Range = SupplierSheet.Range(SupplierSheet.Cells(2, PO_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.Count, PO_Column).End(xlUp).Row, PO_Column))
+        Set PO_Column_Range = SupplierSheet.Range(SupplierSheet.Cells(2, PO_Column), SupplierSheet.Cells(SupplierSheet.Cells(SupplierSheet.Rows.count, PO_Column).End(xlUp).Row, PO_Column))
     Else
         MsgBox "Column with headers For Purchase Order not found. check code for the strings"
     End If
